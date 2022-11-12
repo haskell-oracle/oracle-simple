@@ -1,0 +1,64 @@
+cabal-version:       >=1.10
+name:                oracle-simple
+version:             0.1.0.0
+synopsis:            Easy access to Oracle
+description:         Query Oracle databases using odpic
+bug-reports:         https://github.com/heb/oracle-simple
+license:             MIT
+license-file:        LICENSE
+author:              David Johnson
+maintainer:          johnson.david@heb.com, reynolds.william@heb.com
+copyright:           H-E-B (c) 2021
+category:            Database
+build-type:          Simple
+extra-source-files:  CHANGELOG.md
+
+flag default_paths
+  default:
+    True
+  description:
+    Use default system paths for odpic
+
+executable example
+  main-is:
+    Main.hs
+  build-depends:
+    base < 5, oracle-simple
+  hs-source-dirs:
+    exe
+  default-language:
+    Haskell2010
+
+library
+  exposed-modules:
+    Database.Oracle.Simple
+  other-modules:
+    Database.Oracle.Simple.Internal
+  build-depends:
+    base < 5, generic-storable
+  hs-source-dirs:
+    src
+  extra-libraries:
+    odpic
+  if flag(default_paths) && os(linux)
+    includes:
+      /opt/oracle/include/dpi.h
+    include-dirs:
+      /opt/oracle/include
+    extra-lib-dirs:
+      /opt/oracle/lib
+  if flag(default_paths) && os(osx)
+    includes:
+      /usr/local/include/dpi.h
+    include-dirs:
+      /usr/local/include
+    extra-lib-dirs:
+      /usr/local/lib
+  c-sources:
+    cbits/oracle-helpers.c
+  default-language:
+    Haskell2010
+
+source-repository head
+  type: git
+  location: git://github.com/heb/oracle-simple.git
