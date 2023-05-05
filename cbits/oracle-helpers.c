@@ -8,9 +8,9 @@ int context_create (int majorVersion, int minorVersion, dpiContext **context, dp
 }
 
 
-#define USER           "username"
-#define PASSWORD       "password"
-#define CONNECT_STRING "localhost/XEPDB1"
+#define USER           "j222933"
+#define PASSWORD       "OoEHstuj"
+#define CONNECT_STRING "wpx4-scan.heb.com:1521/pdb2om1_rw"
 
 static dpiContext *gContext = NULL;
 static dpiErrorInfo gErrorInfo;
@@ -34,7 +34,7 @@ int getMinorVersion () {
   return DPI_MINOR_VERSION;
 }
 
-int example () {
+int main () {
     printf("data -> %zu\n", sizeof(dpiData)); // 40 bytes
     printf("data buffer -> %zu\n", sizeof(dpiDataBuffer)); // 48 bytes
 
@@ -43,7 +43,7 @@ int example () {
     printf("uint8_t -> %zu\n", sizeof(uint8_t));
 
 
-    const char *selectSql = "select sysdate from dual";
+    const char *selectSql = "select count(*) from EMD.item_master";
     dpiConn *conn;
     dpiStmt *stmt;
     int found;
@@ -95,18 +95,8 @@ int example () {
 
 	printf("type -> %d\n", nativeTypeNum);
 
-        printf( "%d-%d-%d %u:%u:%u - %d %d %d\n"
-	       , tsColValue->value.asTimestamp.year
-	       , tsColValue->value.asTimestamp.month
-	       , tsColValue->value.asTimestamp.day
-
-	       , tsColValue->value.asTimestamp.hour
-	       , tsColValue->value.asTimestamp.minute
-	       , tsColValue->value.asTimestamp.second
-
-	       , tsColValue->value.asTimestamp.fsecond
-               , tsColValue->value.asTimestamp.tzHourOffset
-               , tsColValue->value.asTimestamp.tzMinuteOffset
+        printf( "%f\n"
+	       , tsColValue->value.asDouble
 	       );
 	}
 

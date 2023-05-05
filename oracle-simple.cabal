@@ -49,11 +49,11 @@ library
       /opt/oracle/lib
   if flag(default_paths) && os(osx)
     includes:
-      /usr/local/include/dpi.h
+      /usr/local/opt/odpi/include/dpi.h
     include-dirs:
-      /usr/local/include
+      /usr/local/opt/odpi/include
     extra-lib-dirs:
-      /usr/local/lib
+      /usr/local/opt/odpi/lib
   c-sources:
     cbits/oracle-helpers.c
   default-language:

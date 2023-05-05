@@ -1,7 +1,7 @@
 { lib, stdenv, fetchFromGitHub, fixDarwinDylibNames, oracle-instantclient, libaio }:
 
 let
-  version = "4.2.1";
+  version = "4.6.0";
   libPath = lib.makeLibraryPath [ oracle-instantclient.lib ];
 
 in stdenv.mkDerivation {
@@ -12,8 +12,8 @@ in stdenv.mkDerivation {
   src = fetchFromGitHub {
     owner = "oracle";
     repo = "odpi";
-    rev = "e2e5f7ad1a17ee12b8055709326bd3c394cc94c8";
-    sha256 = "1xl097cnzdkbhladf832mn1ffky15ny55ablj28c5glvmwdwrl4d";
+    rev = "v${version}";
+    sha256 = "sha256-hhe6j0qJkRoUIr+FZ4GqGUmI9Yu4Rwxu01f9b4pU5Dc=";
   };
 
   nativeBuildInputs = lib.optional stdenv.isDarwin fixDarwinDylibNames;
@@ -38,7 +38,7 @@ in stdenv.mkDerivation {
     homepage = "https://oracle.github.io/odpi/";
     maintainers = with maintainers; [ mkazulak flokli ];
     license = licenses.asl20;
-    platforms = [ "x86_64-linux" "x86_64-darwin" ];
+    platforms = [ "x86_64-linux" "aarch64-linux" "x86_64-darwin" ];
     hydraPlatforms = [];
   };
 }
