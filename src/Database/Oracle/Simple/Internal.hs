@@ -392,17 +392,12 @@ instance Storable ErrorInfo where
 
 data OracleError
   = OracleError
-  { oracleErrorName :: String
-  , oracleErrorAction :: String
-  , oracleErrorMessage :: String
+  { oracleErrorCode :: Int
   } deriving (Show, Eq, Typeable)
 
 toOracleError :: ErrorInfo -> IO OracleError
-toOracleError ErrorInfo {..} = do
-  oracleErrorName <- peekCString errorInfoFnName
-  oracleErrorAction <- peekCString errorInfoAction
-  oracleErrorMessage <- peekCString errorInfoMessage
-  pure OracleError {..}
+toOracleError ErrorInfo {..} =
+  pure OracleError { oracleErrorCode = fromIntegral errorInfoCode }
 
 throwOracleError :: CInt -> IO ()
 throwOracleError returnCode = do
