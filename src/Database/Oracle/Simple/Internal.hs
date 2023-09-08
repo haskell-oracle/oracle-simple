@@ -373,7 +373,22 @@ data ErrorInfo
   , errorInfoIsRecoverable :: CInt
   , errorInfoIsWarning :: CInt
   } deriving (Show, Eq, Ord, Generic)
-    deriving Storable via StorableWrapper ErrorInfo
+
+instance Storable ErrorInfo where
+  sizeOf _ =
+      sizeOf (undefined :: CInt)
+    + sizeOf (undefined :: Word16)
+    + sizeOf (undefined :: CString)
+    + sizeOf (undefined :: CUInt)
+    + sizeOf (undefined :: CString)
+    + sizeOf (undefined :: CString)
+    + sizeOf (undefined :: CString)
+    + sizeOf (undefined :: CString)
+    + sizeOf (undefined :: CInt)
+    + sizeOf (undefined :: CInt)
+  alignment _ = 8
+  poke = pokeDefault
+  peek = peekDefault
 
 data OracleError
   = OracleError
