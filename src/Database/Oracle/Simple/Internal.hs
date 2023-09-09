@@ -360,6 +360,20 @@ renderErrorInfo ErrorInfo { errorInfoCode, errorInfoMessage } = do
     str <- peekCString errorInfoMessage
     putStrLn $ "Error msg: " <> str
 
+-- struct dpiErrorInfo {           sz unaligned   aligned offset
+--     int32_t code;            -- 4  0           0
+--     uint16_t offset16;       -- 2  4           4
+--     const char *message;     -- 8  6           8
+--     uint32_t messageLength;  -- 4  14          16
+--     const char *encoding;    -- 8  18          24
+--     const char *fnName;      -- 8  26          32
+--     const char *action;      -- 8  34          40
+--     const char *sqlState;    -- 8  42          48
+--     int isRecoverable;       -- 4  50          54
+--     int isWarning;           -- 4  54          62
+--     uint32_t offset;
+-- };
+
 data ErrorInfo
   = ErrorInfo
   { errorInfoCode :: CInt
@@ -388,20 +402,45 @@ instance Storable ErrorInfo where
     + sizeOf (undefined :: CInt)
   alignment _ = 8
   poke = pokeDefault
-  peek = peekDefault
+  -- peek = peekDefault
+  peek ptr = do
+    ErrorInfo
+      <$> peekByteOff ptr 0
+      <*> peekByteOff ptr 4
+      <*> peekByteOff ptr 8
+      <*> peekByteOff ptr 16
+      <*> peekByteOff ptr 24
+      <*> peekByteOff ptr 32
+      <*> peekByteOff ptr 40
+      <*> peekByteOff ptr 48
+      <*> peekByteOff ptr 54
+      <*> peekByteOff ptr 62
 
 data OracleError
   = OracleError
   { oracleErrorName :: String
   , oracleErrorAction :: String
   , oracleErrorMessage :: String
+  --
+  , oracleErrorCode :: Int
+  -- , oracleErrorOffset16 :: Word16
+  -- , oracleErrorMessageLength :: Int
+  , oracleErrorIsRecoverable :: Int
+  , oracleErrorIsWarning :: Int
   } deriving (Show, Eq, Typeable)
 
 toOracleError :: ErrorInfo -> IO OracleError
 toOracleError ErrorInfo {..} = do
   oracleErrorName <- peekCString errorInfoFnName
   oracleErrorAction <- peekCString errorInfoAction
-  oracleErrorMessage <- peekCString errorInfoMessage
+  oracleErrorMessage <- peekCStringLen (errorInfoMessage, fromIntegral errorInfoMessageLength)
+  -- let oracleErrorName = show errorInfoFnName
+  -- let oracleErrorAction = show errorInfoAction
+  -- let oracleErrorMessage = show errorInfoMessage
+  let oracleErrorCode = fromIntegral errorInfoCode
+  -- let oracleErrorOffset16 = errorInfoOffset16
+  let oracleErrorIsRecoverable = fromIntegral errorInfoIsRecoverable
+  let oracleErrorIsWarning = fromIntegral errorInfoIsWarning
   pure OracleError {..}
 
 throwOracleError :: CInt -> IO ()
@@ -411,20 +450,6 @@ throwOracleError returnCode = do
     (throwIO =<< toOracleError =<< getErrorInfo)
 
 instance Exception OracleError
-
--- struct dpiErrorInfo {
---     int32_t code;
---     uint16_t offset16;
---     const char *message;
---     uint32_t messageLength;
---     const char *encoding;
---     const char *fnName;
---     const char *action;
---     const char *sqlState;
---     int isRecoverable;
---     int isWarning;
---     uint32_t offset;
--- };
 
 data VersionInfo
   = VersionInfo
