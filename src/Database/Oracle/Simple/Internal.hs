@@ -800,7 +800,7 @@ getQueryValue stmt pos = do
 data Data
   = Data
   { dataIsNull :: CInt
-  , dataValue :: DataBuffer
+  , dataValue :: CDouble
   } deriving stock (Generic, Show, Eq)
     deriving Storable via StorableWrapper Data
 
@@ -823,7 +823,8 @@ data Data
 
 data DataBuffer
   = DataBuffer
-  { asTimestamp :: DPITimeStamp
+  { asDouble :: CDouble
+  , asTimestamp :: DPITimeStamp
   } deriving stock (Generic, Show, Eq)
     deriving Storable via StorableWrapper DataBuffer
 
@@ -908,3 +909,7 @@ stmtRelease = throwOracleError <=< dpiStmt_release
 
 -- instance FromField a where
 --   fromField :: a ->
+
+-- DPI_EXPORT double dpiData_getDouble(dpiData *data);
+foreign import ccall "dpiData_getDouble"
+  dpiData_getDouble :: Ptr Data -> IO CDouble
