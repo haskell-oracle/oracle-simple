@@ -360,7 +360,7 @@ renderErrorInfo ErrorInfo { errorInfoCode, errorInfoMessage } = do
     str <- peekCString errorInfoMessage
     putStrLn $ "Error msg: " <> str
 
--- struct dpiErrorInfo {           sz unaligned   aligned offset
+-- struct dpiErrorInfo {           sz             aligned
 --     int32_t code;            -- 4  0           0
 --     uint16_t offset16;       -- 2  4           4
 --     const char *message;     -- 8  6           8
@@ -843,9 +843,10 @@ data OracleValue = ODouble CDouble | OTimestamp DPITimeStamp
 
 getQueryValue'
   :: DPIStmt
+  -> DPINativeTypeNum -- ??
   -> CUInt -- pos
   -> IO OracleValue
-getQueryValue' stmt pos = do
+getQueryValue' stmt wantTyp pos = do
   alloca $ \(buffer :: Ptr (Ptr Data)) -> do
     alloca $ \(typ :: Ptr CUInt) -> do
       throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer -- (**data)
@@ -853,13 +854,14 @@ getQueryValue' stmt pos = do
         Nothing ->
           error "getQueryValue: Invalid type returned"
         Just typ -> do
-            dataBuffer <- peek buffer
-            case typ of
-              DPI_NATIVE_TYPE_DOUBLE ->
-                fmap ODouble $ dpiData_getDouble dataBuffer
-              DPI_NATIVE_TYPE_TIMESTAMP ->
-                fmap OTimestamp . peek =<< dpiData_getTimestamp dataBuffer
-              _ -> error "type unsupported"
+          unless (typ == wantTyp) $ error "type mismatch"
+          dataBuffer <- peek buffer
+          case typ of
+            DPI_NATIVE_TYPE_DOUBLE ->
+              fmap ODouble $ dpiData_getDouble dataBuffer
+            DPI_NATIVE_TYPE_TIMESTAMP ->
+              fmap OTimestamp . peek =<< dpiData_getTimestamp dataBuffer
+            _ -> error "type unsupported"
 
 data Data
   = Data
