@@ -853,6 +853,46 @@ getQueryValue' stmt wantTyp pos = do
               fmap OTimestamp . peek =<< dpiData_getTimestamp dataBuffer
             _ -> error "type unsupported"
 
+newtype Getter a = Getter { runGetter :: DPIStmt -> Int -> IO a }
+
+instance Functor Getter where
+  fmap f g = Getter $ \dpiStmt pos -> f <$> runGetter g dpiStmt pos
+
+instance Applicative Getter where
+  pure a = Getter $ \_ _ -> pure a
+  f <*> g = Getter $ \dpiStmt pos -> do
+    fn <- runGetter f dpiStmt pos
+    fn <$> runGetter g dpiStmt (pos + 1) -- seek next column!
+
+getDouble :: Getter CDouble
+getDouble = Getter $ \dpiStmt pos -> do
+  valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_DOUBLE (fromIntegral pos)
+  case valPerhaps of
+    ODouble d -> pure d
+    _ -> error "type mismatch"
+
+getTimestamp :: Getter DPITimeStamp
+getTimestamp = Getter $ \dpiStmt pos -> do
+  valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_TIMESTAMP (fromIntegral pos)
+  case valPerhaps of
+    OTimestamp d -> pure d
+    _ -> error "type mismatch"
+
+data TimeAndCount = TimeAndCount { time :: DPITimeStamp, count :: CDouble }
+  deriving Show
+
+getTimeAndCount :: Getter TimeAndCount
+getTimeAndCount = TimeAndCount <$> getTimestamp <*> getDouble
+
+class FromField a where
+  fromField :: Getter a
+
+instance FromField CDouble where
+  fromField = getDouble
+
+instance FromField DPITimeStamp where
+  fromField = getTimestamp
+
 data Data
   = Data
   { dataIsNull :: CInt

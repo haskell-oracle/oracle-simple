@@ -24,7 +24,9 @@ foo = do
   execute stmt DPI_MODE_EXEC_DEFAULT
   found <- fetch stmt
   unless (found == 0) $ do
-    tsVal <- getQueryValue' stmt DPI_NATIVE_TYPE_TIMESTAMP 1
+    -- tsVal <- getQueryValue' stmt DPI_NATIVE_TYPE_TIMESTAMP 1
+    tsVal <- runGetter getTimeAndCount stmt 1
     print tsVal
-    countVal <- getQueryValue' stmt DPI_NATIVE_TYPE_DOUBLE 2
-    print countVal
+    -- countVal <- runGetter getDouble stmt 2
+    -- countVal <- getQueryValue' stmt DPI_NATIVE_TYPE_DOUBLE 2
+    -- print countVal
