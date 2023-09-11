@@ -360,6 +360,20 @@ renderErrorInfo ErrorInfo { errorInfoCode, errorInfoMessage } = do
     str <- peekCString errorInfoMessage
     putStrLn $ "Error msg: " <> str
 
+-- struct dpiErrorInfo {           sz unaligned   aligned offset
+--     int32_t code;            -- 4  0           0
+--     uint16_t offset16;       -- 2  4           4
+--     const char *message;     -- 8  6           8
+--     uint32_t messageLength;  -- 4  14          16
+--     const char *encoding;    -- 8  18          24
+--     const char *fnName;      -- 8  26          32
+--     const char *action;      -- 8  34          40
+--     const char *sqlState;    -- 8  42          48
+--     int isRecoverable;       -- 4  50          54
+--     int isWarning;           -- 4  54          62
+--     uint32_t offset;
+-- };
+
 data ErrorInfo
   = ErrorInfo
   { errorInfoCode :: CInt
@@ -388,16 +402,57 @@ instance Storable ErrorInfo where
     + sizeOf (undefined :: CInt)
   alignment _ = 8
   poke = pokeDefault
-  peek = peekDefault
+  -- peek = peekDefault
+  peek ptr = do
+    ErrorInfo
+      <$> peekByteOff ptr 0
+      <*> peekByteOff ptr 4
+      <*> peekByteOff ptr 8
+      <*> peekByteOff ptr 16
+      <*> peekByteOff ptr 24
+      <*> peekByteOff ptr 32
+      <*> peekByteOff ptr 40
+      <*> peekByteOff ptr 48
+      <*> peekByteOff ptr 54
+      <*> peekByteOff ptr 62
 
 data OracleError
   = OracleError
-  { oracleErrorCode :: Int
+  { oracleErrorFnName :: String
+  -- ^ The public ODPI-C function name which was called in which the error took place.
+  , oracleErrorAction :: String
+  -- ^ The internal action that was being performed when the error took place.
+  , oracleErrorMessage :: String
+  -- ^ The error message as a byte string.
+  , oracleErrorSqlState :: String
+  -- ^ The SQLSTATE associated with the error.
+  , oracleErrorCode :: Int
+  -- , oracleErrorOffset16 :: Word16
+  -- , oracleErrorMessageLength :: Int
+  , oracleErrorIsRecoverable :: Bool
+  -- ^ A boolean value indicating if the error is recoverable.
+  , oracleErrorIsWarning :: Bool
+  -- ^ A boolean value indicating if the error information is for a warning returned
+  -- by Oracle that does not prevent the request operation from proceeding.
   } deriving (Show, Eq, Typeable)
 
 toOracleError :: ErrorInfo -> IO OracleError
-toOracleError ErrorInfo {..} =
-  pure OracleError { oracleErrorCode = fromIntegral errorInfoCode }
+toOracleError ErrorInfo {..} = do
+  oracleErrorFnName <- peekCString errorInfoFnName
+  oracleErrorAction <- peekCString errorInfoAction
+  oracleErrorMessage <- peekCStringLen (errorInfoMessage, fromIntegral errorInfoMessageLength)
+  oracleErrorSqlState <- peekCString errorInfoSqlState
+  let oracleErrorCode = fromIntegral errorInfoCode
+  let oracleErrorIsRecoverable = intToBool $ fromIntegral errorInfoIsRecoverable
+  let oracleErrorIsWarning = intToBool $ fromIntegral errorInfoIsWarning
+  pure OracleError {..}
+
+ where
+
+  intToBool :: Int -> Bool
+  intToBool 0 = False
+  intToBool 1 = True
+  intToBool i = error $ "boolean encoded as integer not 0 or 1: " <> show i
 
 throwOracleError :: CInt -> IO ()
 throwOracleError returnCode = do
@@ -406,20 +461,6 @@ throwOracleError returnCode = do
     (throwIO =<< toOracleError =<< getErrorInfo)
 
 instance Exception OracleError
-
--- struct dpiErrorInfo {
---     int32_t code;
---     uint16_t offset16;
---     const char *message;
---     uint32_t messageLength;
---     const char *encoding;
---     const char *fnName;
---     const char *action;
---     const char *sqlState;
---     int isRecoverable;
---     int isWarning;
---     uint32_t offset;
--- };
 
 data VersionInfo
   = VersionInfo
