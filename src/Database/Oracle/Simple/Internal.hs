@@ -369,9 +369,9 @@ renderErrorInfo ErrorInfo { errorInfoCode, errorInfoMessage } = do
 --     const char *fnName;      -- 8  26          32
 --     const char *action;      -- 8  34          40
 --     const char *sqlState;    -- 8  42          48
---     int isRecoverable;       -- 4  50          54
---     int isWarning;           -- 4  54          62
---     uint32_t offset;
+--     int isRecoverable;       -- 4  50          56
+--     int isWarning;           -- 4  54          60
+--     uint32_t offset;                                 64
 -- };
 
 data ErrorInfo
@@ -389,17 +389,7 @@ data ErrorInfo
   } deriving (Show, Eq, Ord, Generic)
 
 instance Storable ErrorInfo where
-  sizeOf _ =
-      sizeOf (undefined :: CInt)
-    + sizeOf (undefined :: Word16)
-    + sizeOf (undefined :: CString)
-    + sizeOf (undefined :: CUInt)
-    + sizeOf (undefined :: CString)
-    + sizeOf (undefined :: CString)
-    + sizeOf (undefined :: CString)
-    + sizeOf (undefined :: CString)
-    + sizeOf (undefined :: CInt)
-    + sizeOf (undefined :: CInt)
+  sizeOf _ = 72 -- 4 + 2 + 2* + 8 + 4 + 4* + 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4*
   alignment _ = 8
   poke = pokeDefault
   -- peek = peekDefault
@@ -413,8 +403,8 @@ instance Storable ErrorInfo where
       <*> peekByteOff ptr 32
       <*> peekByteOff ptr 40
       <*> peekByteOff ptr 48
-      <*> peekByteOff ptr 54
-      <*> peekByteOff ptr 62
+      <*> peekByteOff ptr 56
+      <*> peekByteOff ptr 60
 
 data OracleError
   = OracleError
