@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
@@ -22,7 +23,6 @@ import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Marshal.Utils
 import Foreign.Ptr
-import Foreign.Storable
 import Foreign.Storable.Generic
 import GHC.Generics
 import System.IO.Unsafe
@@ -215,7 +215,7 @@ data DPIConnCreateParams
   , numSuperShardingKeyColumns :: Word8
   , outNewSession              :: CInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIConnCreateParams
+    deriving anyclass GStorable
 
 -- struct dpiConnCreateParams {
 --     dpiAuthMode authMode;
@@ -254,7 +254,7 @@ data DPICommonCreateParams
   , sodaMetadataCache :: Int
   , stmtCacheSize     :: CInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPICommonCreateParams
+    deriving anyclass GStorable
 
 -- instance Storable DPICommonCreateParams where
 --   sizeOf = sizeOfDefault
@@ -373,7 +373,7 @@ data ErrorInfo
   , errorInfoIsRecoverable :: CInt
   , errorInfoIsWarning :: CInt
   } deriving (Show, Eq, Ord, Generic)
-    deriving Storable via StorableWrapper ErrorInfo
+    deriving anyclass GStorable
 
 data OracleError
   = OracleError
@@ -420,7 +420,7 @@ data VersionInfo
   , portUpdateNum :: CInt
   , fullVersionNum :: CUInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper VersionInfo
+    deriving anyclass GStorable
 
 -- struct dpiVersionInfo {
 --     int versionNum;
@@ -521,7 +521,7 @@ data DPIBytes
   , dpiBytesLength :: CUInt
   , dpiBytesEncoding :: CString
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIBytes
+    deriving anyclass GStorable
 
 -- typedef struct {
 --     char *ptr;
@@ -538,7 +538,7 @@ data DPIIntervalDS
   , seconds :: CInt
   , fseconds :: CInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIIntervalDS
+    deriving anyclass GStorable
 
 -- // structure used for transferring day/seconds intervals to/from ODPI-C
 -- typedef struct {
@@ -554,7 +554,7 @@ data DPIIntervalYM
   { years :: CInt
   , months :: CInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIIntervalYM
+    deriving anyclass GStorable
 
 -- typedef struct {
 --     int32_t years;
@@ -574,7 +574,7 @@ data DPITimeStamp
   , tzHourOffset :: Int8
   , tzMinuteOffset :: Int8
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPITimeStamp
+    deriving anyclass GStorable
 
 -- instance Storable DPITimeStamp where
 --   sizeOf _ = 16
@@ -613,7 +613,7 @@ data DPIAppContext
   , value :: CString
   , valueLength :: CUInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIAppContext
+    deriving anyclass GStorable
 
 -- struct dpiAppContext {
 --     const char *namespaceName;
@@ -632,7 +632,7 @@ data DPIContextCreateParams
   , oracleClientLibDir :: CString
   , oracleClientConfigDir :: CString
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIContextCreateParams
+    deriving anyclass GStorable
 
 -- struct dpiContextCreateParams {
 --     const char *defaultDriverName;
@@ -792,7 +792,7 @@ data Data
   { dataIsNull :: CInt
   , dataValue :: DataBuffer
   } deriving stock (Generic, Show, Eq)
-    deriving Storable via StorableWrapper Data
+    deriving anyclass GStorable
 
 -- instance Storable Data where
 --   sizeOf _ = 48
@@ -815,7 +815,7 @@ data DataBuffer
   = DataBuffer
   { asTimestamp :: DPITimeStamp
   } deriving stock (Generic, Show, Eq)
-    deriving Storable via StorableWrapper DataBuffer
+    deriving anyclass GStorable
 
 data DPINativeTypeNum
   = DPI_NATIVE_TYPE_INT64

@@ -17,6 +17,9 @@ foreign import ccall safe "example" example :: IO ()
 
 foo :: IO ()
 foo = do
+  major <- getMajorVersion
+  minor <- getMinorVersion
+  print ("version -> " :: String, major, minor)
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   stmt <- prepareStmt conn "select sysdate from dual"
   execute stmt DPI_MODE_EXEC_DEFAULT
