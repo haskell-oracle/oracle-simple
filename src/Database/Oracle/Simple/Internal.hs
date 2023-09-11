@@ -418,30 +418,41 @@ instance Storable ErrorInfo where
 
 data OracleError
   = OracleError
-  { oracleErrorName :: String
+  { oracleErrorFnName :: String
+  -- ^ The public ODPI-C function name which was called in which the error took place.
   , oracleErrorAction :: String
+  -- ^ The internal action that was being performed when the error took place.
   , oracleErrorMessage :: String
-  --
+  -- ^ The error message as a byte string.
+  , oracleErrorSqlState :: String
+  -- ^ The SQLSTATE associated with the error.
   , oracleErrorCode :: Int
   -- , oracleErrorOffset16 :: Word16
   -- , oracleErrorMessageLength :: Int
-  , oracleErrorIsRecoverable :: Int
-  , oracleErrorIsWarning :: Int
+  , oracleErrorIsRecoverable :: Bool
+  -- ^ A boolean value indicating if the error is recoverable.
+  , oracleErrorIsWarning :: Bool
+  -- ^ A boolean value indicating if the error information is for a warning returned
+  -- by Oracle that does not prevent the request operation from proceeding.
   } deriving (Show, Eq, Typeable)
 
 toOracleError :: ErrorInfo -> IO OracleError
 toOracleError ErrorInfo {..} = do
-  oracleErrorName <- peekCString errorInfoFnName
+  oracleErrorFnName <- peekCString errorInfoFnName
   oracleErrorAction <- peekCString errorInfoAction
   oracleErrorMessage <- peekCStringLen (errorInfoMessage, fromIntegral errorInfoMessageLength)
-  -- let oracleErrorName = show errorInfoFnName
-  -- let oracleErrorAction = show errorInfoAction
-  -- let oracleErrorMessage = show errorInfoMessage
+  oracleErrorSqlState <- peekCString errorInfoSqlState
   let oracleErrorCode = fromIntegral errorInfoCode
-  -- let oracleErrorOffset16 = errorInfoOffset16
-  let oracleErrorIsRecoverable = fromIntegral errorInfoIsRecoverable
-  let oracleErrorIsWarning = fromIntegral errorInfoIsWarning
+  let oracleErrorIsRecoverable = intToBool $ fromIntegral errorInfoIsRecoverable
+  let oracleErrorIsWarning = intToBool $ fromIntegral errorInfoIsWarning
   pure OracleError {..}
+
+ where
+
+  intToBool :: Int -> Bool
+  intToBool 0 = False
+  intToBool 1 = True
+  intToBool i = error $ "boolean encoded as integer not 0 or 1: " <> show i
 
 throwOracleError :: CInt -> IO ()
 throwOracleError returnCode = do
