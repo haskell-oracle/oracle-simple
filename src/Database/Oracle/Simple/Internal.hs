@@ -797,6 +797,29 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
+data OracleValue = ODouble CDouble | OTimestamp DPITimeStamp
+  deriving (Eq, Show)
+
+getQueryValue'
+  :: DPIStmt
+  -> CUInt -- pos
+  -> IO OracleValue
+getQueryValue' stmt pos = do
+  alloca $ \(buffer :: Ptr (Ptr Data)) -> do
+    alloca $ \(typ :: Ptr CUInt) -> do
+      throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer -- (**data)
+      (toNativeTypeNum <$> peek typ) >>= \case
+        Nothing ->
+          error "getQueryValue: Invalid type returned"
+        Just typ -> do
+            dataBuffer <- peek buffer
+            case typ of
+              DPI_NATIVE_TYPE_DOUBLE ->
+                fmap ODouble $ dpiData_getDouble dataBuffer
+              DPI_NATIVE_TYPE_TIMESTAMP ->
+                fmap OTimestamp . peek =<< dpiData_getTimestamp dataBuffer
+              _ -> error "type unsupported"
+
 data Data
   = Data
   { dataIsNull :: CInt
