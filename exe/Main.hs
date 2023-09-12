@@ -1,6 +1,7 @@
 {-# LANGUAGE CPP  #-}
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RecordWildCards #-}
 module Main where
 
 import Control.Monad
@@ -16,8 +17,8 @@ foreign import ccall safe "example" example :: IO ()
 newtype RowCount = RowCount { getRowCount :: CDouble }
   deriving Show
 
-instance FromField RowCount where
-  fromField = fmap RowCount . fromField
+instance FromRow RowCount where
+  fromRow = RowCount <$> fromRow
 
 data ReturnedRow = ReturnedRow
   { count :: RowCount
@@ -25,10 +26,12 @@ data ReturnedRow = ReturnedRow
   } deriving Show
 
 instance FromRow ReturnedRow where
-  fromRow =
-    ReturnedRow
-      <$> (fromField $ Position 1)
-      <*> (fromField $ Position 2)
+  fromRow = do
+    count <- fromRow
+    sysdate <- fromRow
+    pure ReturnedRow {..}
+  -- or:
+  -- fromRow = ReturnedRow <$> fromRow <*> fromRow
 
 foo :: IO ()
 foo = do

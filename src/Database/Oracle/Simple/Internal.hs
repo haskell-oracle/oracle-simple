@@ -797,40 +797,44 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
-newtype Getter a = Getter { runGetter :: DPIStmt -> IO a }
+newtype Getter a = Getter { runGetter :: DPIStmt -> Position -> IO a }
 
 getRow :: forall a. FromRow a => DPIStmt -> IO a
-getRow stmt = runGetter fromRow stmt
+getRow stmt = runGetter fromRow stmt 1
 
 instance Functor Getter where
-  fmap f g = Getter $ \dpiStmt -> f <$> runGetter g dpiStmt
+  fmap f g = Getter $ \dpiStmt pos -> f <$> runGetter g dpiStmt pos
 
 instance Applicative Getter where
-  pure a = Getter $ \_ -> pure a
-  f <*> g = Getter $ \dpiStmt -> do
-    fn <- runGetter f dpiStmt
-    fn <$> runGetter g dpiStmt
+  pure a = Getter $ \_ _ -> pure a
+  f <*> g = Getter $ \dpiStmt pos -> do
+    fn <- runGetter f dpiStmt pos
+    fn <$> runGetter g dpiStmt (pos + 1)
+
+instance Monad Getter where
+  return = pure
+  f >>= g = Getter $ \dpiStmt pos -> do
+    f <- runGetter f dpiStmt pos
+    runGetter (g f) dpiStmt (pos + 1)
 
 newtype Position = Position { getPosition :: Int }
+  deriving newtype Num
 
-class FromField a where
-  fromField :: Position -> Getter a
+class FromRow a where
+  fromRow :: Getter a
 
-fromFieldForType :: DPINativeTypeNum -> (Ptr Data -> IO a) -> Position -> Getter a
-fromFieldForType wantType dpiGetDataFn pos = Getter $ \dpiStmt -> do
+mkFromRow :: DPINativeTypeNum -> (Ptr Data -> IO a) -> Getter a
+mkFromRow wantType dpiGetDataFn = Getter $ \dpiStmt pos -> do
   (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
   unless (gotType == wantType) $
     error $ "type mismatch: expected " <> show wantType <> ", but got " <> show gotType
   dpiGetDataFn dataBuf
 
-instance FromField CDouble where
-  fromField = fromFieldForType DPI_NATIVE_TYPE_DOUBLE dpiData_getDouble
+instance FromRow CDouble where
+  fromRow = mkFromRow DPI_NATIVE_TYPE_DOUBLE dpiData_getDouble
 
-instance FromField DPITimeStamp where
-  fromField = fromFieldForType DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
-
-class FromRow a where
-  fromRow :: Getter a
+instance FromRow DPITimeStamp where
+  fromRow = mkFromRow DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
 
 data Data
   = Data
@@ -948,3 +952,20 @@ stmtRelease = throwOracleError <=< dpiStmt_release
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr Data -> IO CDouble
+
+--
+{-
+data FieldInfo a = FieldInfo
+  { nativeType :: DPINativeTypeNum
+  , dpiGetDataFn :: Ptr Data -> IO a
+  }
+
+class FromField a where
+  field :: FieldInfo a
+
+instance FromField CDouble where
+  field = FieldInfo DPI_NATIVE_TYPE_DOUBLE dpiData_getDouble
+
+instance FromField DPITimeStamp where
+  field = FieldInfo DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
+-}
