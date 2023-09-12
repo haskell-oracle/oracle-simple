@@ -854,36 +854,36 @@ getQueryValue' stmt wantTyp pos = do
             _ -> error "type unsupported"
 
 
-newtype Getter a = Getter { runGetter :: DPIStmt -> Int -> IO a }
+newtype Getter a = Getter { runGetter :: DPIStmt -> IO a }
 
-getValue :: forall a. FromField a => DPIStmt -> IO a
-getValue stmt = runGetter fromField stmt 1
+getValue :: forall a. FromRow a => DPIStmt -> IO a
+getValue stmt = runGetter fromRow stmt
 
 instance Functor Getter where
-  fmap f g = Getter $ \dpiStmt pos -> f <$> runGetter g dpiStmt pos
+  fmap f g = Getter $ \dpiStmt -> f <$> runGetter g dpiStmt
 
 instance Applicative Getter where
-  pure a = Getter $ \_ _ -> pure a
-  f <*> g = Getter $ \dpiStmt pos -> do
-    fn <- runGetter f dpiStmt pos
-    fn <$> runGetter g dpiStmt (pos + 1) -- seek next column!
+  pure a = Getter $ \_ -> pure a
+  f <*> g = Getter $ \dpiStmt -> do
+    fn <- runGetter f dpiStmt
+    fn <$> runGetter g dpiStmt
 
-getDouble :: Getter CDouble
-getDouble = Getter $ \dpiStmt pos -> do
+getDouble :: Int -> Getter CDouble
+getDouble pos = Getter $ \dpiStmt -> do
   valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_DOUBLE (fromIntegral pos)
   case valPerhaps of
     ODouble d -> pure d
     _ -> error "type mismatch"
 
-getTimestamp :: Getter DPITimeStamp
-getTimestamp = Getter $ \dpiStmt pos -> do
+getTimestamp :: Int -> Getter DPITimeStamp
+getTimestamp pos = Getter $ \dpiStmt -> do
   valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_TIMESTAMP (fromIntegral pos)
   case valPerhaps of
     OTimestamp d -> pure d
     _ -> error "type mismatch"
 
 class FromField a where
-  fromField :: Getter a
+  fromField :: Int -> Getter a
 
 instance FromField CDouble where
   fromField = getDouble
@@ -891,11 +891,20 @@ instance FromField CDouble where
 instance FromField DPITimeStamp where
   fromField = getTimestamp
 
-data TimeAndCount = TimeAndCount { time :: DPITimeStamp, count :: CDouble }
+class FromRow a where
+  fromRow :: Getter a
+
+newtype RowCount = RowCount { getRowCount :: CDouble }
   deriving Show
 
-instance FromField TimeAndCount where
-  fromField = TimeAndCount <$> fromField <*> fromField
+instance FromField RowCount where
+  fromField = fmap RowCount . fromField
+
+data TimeAndCount = TimeAndCount { time :: DPITimeStamp, count :: RowCount }
+  deriving Show
+
+instance FromRow TimeAndCount where
+  fromRow = TimeAndCount <$> (fromField 1) <*> (fromField 2)
 
 data Data
   = Data
