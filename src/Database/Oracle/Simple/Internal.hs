@@ -853,7 +853,11 @@ getQueryValue' stmt wantTyp pos = do
               fmap OTimestamp . peek =<< dpiData_getTimestamp dataBuffer
             _ -> error "type unsupported"
 
+
 newtype Getter a = Getter { runGetter :: DPIStmt -> Int -> IO a }
+
+getValue :: forall a. FromField a => DPIStmt -> IO a
+getValue stmt = runGetter fromField stmt 1
 
 instance Functor Getter where
   fmap f g = Getter $ \dpiStmt pos -> f <$> runGetter g dpiStmt pos
@@ -878,12 +882,6 @@ getTimestamp = Getter $ \dpiStmt pos -> do
     OTimestamp d -> pure d
     _ -> error "type mismatch"
 
-data TimeAndCount = TimeAndCount { time :: DPITimeStamp, count :: CDouble }
-  deriving Show
-
-getTimeAndCount :: Getter TimeAndCount
-getTimeAndCount = TimeAndCount <$> getTimestamp <*> getDouble
-
 class FromField a where
   fromField :: Getter a
 
@@ -892,6 +890,12 @@ instance FromField CDouble where
 
 instance FromField DPITimeStamp where
   fromField = getTimestamp
+
+data TimeAndCount = TimeAndCount { time :: DPITimeStamp, count :: CDouble }
+  deriving Show
+
+instance FromField TimeAndCount where
+  fromField = TimeAndCount <$> fromField <*> fromField
 
 data Data
   = Data

@@ -1,5 +1,6 @@
 {-# LANGUAGE CPP  #-}
 {-# LANGUAGE BangPatterns #-}
+{-# LANGUAGE TypeApplications #-}
 module Main where
 
 import Control.Monad
@@ -25,7 +26,7 @@ foo = do
   found <- fetch stmt
   unless (found == 0) $ do
     -- tsVal <- getQueryValue' stmt DPI_NATIVE_TYPE_TIMESTAMP 1
-    tsVal <- runGetter getTimeAndCount stmt 1
+    tsVal <- getValue @TimeAndCount stmt
     print tsVal
     -- countVal <- runGetter getDouble stmt 2
     -- countVal <- getQueryValue' stmt DPI_NATIVE_TYPE_DOUBLE 2
