@@ -6,28 +6,38 @@ module Main where
 import Control.Monad
 import Database.Oracle.Simple
 import Foreign.Storable
+import Foreign.C.Types
 
 main :: IO ()
-main = do
-  -- example
-  -- putStrLn "haskell time"
-  -- print $ sizeOf (undefined :: DPITimeStamp)
-  foo
+main = foo
 
 foreign import ccall safe "example" example :: IO ()
 
+newtype RowCount = RowCount { getRowCount :: CDouble }
+  deriving Show
+
+instance FromField RowCount where
+  fromField = fmap RowCount . fromField
+
+data ReturnedRow = ReturnedRow
+  { count :: RowCount
+  , sysdate :: DPITimeStamp
+  } deriving Show
+
+instance FromRow ReturnedRow where
+  fromRow =
+    ReturnedRow
+      <$> (fromField $ Position 1)
+      <*> (fromField $ Position 2)
+
 foo :: IO ()
 foo = do
-  let stmt = "select sysdate, count(*) from dual"
+  let stmt = "select count(*), sysdate from dual"
   putStrLn stmt
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   stmt <- prepareStmt conn stmt
   execute stmt DPI_MODE_EXEC_DEFAULT
   found <- fetch stmt
   unless (found == 0) $ do
-    -- tsVal <- getQueryValue' stmt DPI_NATIVE_TYPE_TIMESTAMP 1
-    tsVal <- getValue @TimeAndCount stmt
+    tsVal <- getRow @ReturnedRow stmt
     print tsVal
-    -- countVal <- runGetter getDouble stmt 2
-    -- countVal <- getQueryValue' stmt DPI_NATIVE_TYPE_DOUBLE 2
-    -- print countVal

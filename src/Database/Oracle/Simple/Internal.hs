@@ -825,8 +825,8 @@ getQueryValue' stmt wantTyp pos = do
 
 newtype Getter a = Getter { runGetter :: DPIStmt -> IO a }
 
-getValue :: forall a. FromRow a => DPIStmt -> IO a
-getValue stmt = runGetter fromRow stmt
+getRow :: forall a. FromRow a => DPIStmt -> IO a
+getRow stmt = runGetter fromRow stmt
 
 instance Functor Getter where
   fmap f g = Getter $ \dpiStmt -> f <$> runGetter g dpiStmt
@@ -837,22 +837,24 @@ instance Applicative Getter where
     fn <- runGetter f dpiStmt
     fn <$> runGetter g dpiStmt
 
-getDouble :: Int -> Getter CDouble
+getDouble :: Position -> Getter CDouble
 getDouble pos = Getter $ \dpiStmt -> do
-  valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_DOUBLE (fromIntegral pos)
+  valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_DOUBLE (fromIntegral $ getPosition pos)
   case valPerhaps of
     ODouble d -> pure d
     _ -> error "type mismatch"
 
-getTimestamp :: Int -> Getter DPITimeStamp
+getTimestamp :: Position -> Getter DPITimeStamp
 getTimestamp pos = Getter $ \dpiStmt -> do
-  valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_TIMESTAMP (fromIntegral pos)
+  valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_TIMESTAMP (fromIntegral $ getPosition pos)
   case valPerhaps of
     OTimestamp d -> pure d
     _ -> error "type mismatch"
 
+newtype Position = Position { getPosition :: Int }
+
 class FromField a where
-  fromField :: Int -> Getter a
+  fromField :: Position -> Getter a
 
 instance FromField CDouble where
   fromField = getDouble
@@ -862,18 +864,6 @@ instance FromField DPITimeStamp where
 
 class FromRow a where
   fromRow :: Getter a
-
-newtype RowCount = RowCount { getRowCount :: CDouble }
-  deriving Show
-
-instance FromField RowCount where
-  fromField = fmap RowCount . fromField
-
-data TimeAndCount = TimeAndCount { time :: DPITimeStamp, count :: RowCount }
-  deriving Show
-
-instance FromRow TimeAndCount where
-  fromRow = TimeAndCount <$> (fromField 1) <*> (fromField 2)
 
 data Data
   = Data
