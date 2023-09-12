@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE LambdaCase #-}
@@ -22,7 +23,6 @@ import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Marshal.Utils
 import Foreign.Ptr
-import Foreign.Storable
 import Foreign.Storable.Generic
 import GHC.Generics
 import System.IO.Unsafe
@@ -215,7 +215,7 @@ data DPIConnCreateParams
   , numSuperShardingKeyColumns :: Word8
   , outNewSession              :: CInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIConnCreateParams
+    deriving anyclass GStorable
 
 -- struct dpiConnCreateParams {
 --     dpiAuthMode authMode;
@@ -254,7 +254,7 @@ data DPICommonCreateParams
   , sodaMetadataCache :: Int
   , stmtCacheSize     :: CInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPICommonCreateParams
+    deriving anyclass GStorable
 
 -- instance Storable DPICommonCreateParams where
 --   sizeOf = sizeOfDefault
@@ -360,20 +360,6 @@ renderErrorInfo ErrorInfo { errorInfoCode, errorInfoMessage } = do
     str <- peekCString errorInfoMessage
     putStrLn $ "Error msg: " <> str
 
--- struct dpiErrorInfo {           sz             aligned
---     int32_t code;            -- 4  0           0
---     uint16_t offset16;       -- 2  4           4
---     const char *message;     -- 8  6           8
---     uint32_t messageLength;  -- 4  14          16
---     const char *encoding;    -- 8  18          24
---     const char *fnName;      -- 8  26          32
---     const char *action;      -- 8  34          40
---     const char *sqlState;    -- 8  42          48
---     int isRecoverable;       -- 4  50          56
---     int isWarning;           -- 4  54          60
---     uint32_t offset;                                 64
--- };
-
 data ErrorInfo
   = ErrorInfo
   { errorInfoCode :: CInt
@@ -387,24 +373,7 @@ data ErrorInfo
   , errorInfoIsRecoverable :: CInt
   , errorInfoIsWarning :: CInt
   } deriving (Show, Eq, Ord, Generic)
-
-instance Storable ErrorInfo where
-  sizeOf _ = 72 -- 4 + 2 + 2* + 8 + 4 + 4* + 8 + 8 + 8 + 8 + 4 + 4 + 4 + 4*
-  alignment _ = 8
-  poke = pokeDefault
-  -- peek = peekDefault
-  peek ptr = do
-    ErrorInfo
-      <$> peekByteOff ptr 0
-      <*> peekByteOff ptr 4
-      <*> peekByteOff ptr 8
-      <*> peekByteOff ptr 16
-      <*> peekByteOff ptr 24
-      <*> peekByteOff ptr 32
-      <*> peekByteOff ptr 40
-      <*> peekByteOff ptr 48
-      <*> peekByteOff ptr 56
-      <*> peekByteOff ptr 60
+    deriving anyclass GStorable
 
 data OracleError
   = OracleError
@@ -461,7 +430,7 @@ data VersionInfo
   , portUpdateNum :: CInt
   , fullVersionNum :: CUInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper VersionInfo
+    deriving anyclass GStorable
 
 -- struct dpiVersionInfo {
 --     int versionNum;
@@ -562,7 +531,7 @@ data DPIBytes
   , dpiBytesLength :: CUInt
   , dpiBytesEncoding :: CString
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIBytes
+    deriving anyclass GStorable
 
 -- typedef struct {
 --     char *ptr;
@@ -579,7 +548,7 @@ data DPIIntervalDS
   , seconds :: CInt
   , fseconds :: CInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIIntervalDS
+    deriving anyclass GStorable
 
 -- // structure used for transferring day/seconds intervals to/from ODPI-C
 -- typedef struct {
@@ -595,7 +564,7 @@ data DPIIntervalYM
   { years :: CInt
   , months :: CInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIIntervalYM
+    deriving anyclass GStorable
 
 -- typedef struct {
 --     int32_t years;
@@ -615,7 +584,7 @@ data DPITimeStamp
   , tzHourOffset :: Int8
   , tzMinuteOffset :: Int8
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPITimeStamp
+    deriving anyclass GStorable
 
 -- instance Storable DPITimeStamp where
 --   sizeOf _ = 16
@@ -654,7 +623,7 @@ data DPIAppContext
   , value :: CString
   , valueLength :: CUInt
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIAppContext
+    deriving anyclass GStorable
 
 -- struct dpiAppContext {
 --     const char *namespaceName;
@@ -673,7 +642,7 @@ data DPIContextCreateParams
   , oracleClientLibDir :: CString
   , oracleClientConfigDir :: CString
   } deriving (Show, Eq, Generic)
-    deriving Storable via StorableWrapper DPIContextCreateParams
+    deriving anyclass GStorable
 
 -- struct dpiContextCreateParams {
 --     const char *defaultDriverName;
@@ -911,7 +880,7 @@ data Data
   { dataIsNull :: CInt
   , dataValue :: CDouble
   } deriving stock (Generic, Show, Eq)
-    deriving Storable via StorableWrapper Data
+    deriving anyclass GStorable
 
 -- instance Storable Data where
 --   sizeOf _ = 48
@@ -935,7 +904,7 @@ data DataBuffer
   { asDouble :: CDouble
   , asTimestamp :: DPITimeStamp
   } deriving stock (Generic, Show, Eq)
-    deriving Storable via StorableWrapper DataBuffer
+    deriving anyclass GStorable
 
 data DPINativeTypeNum
   = DPI_NATIVE_TYPE_INT64

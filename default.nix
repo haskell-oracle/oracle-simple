@@ -1,31 +1,24 @@
-{ pkgs ? import <nixpkgs> { config.allowUnfree = true; }
+{ pkgs ? import ./nix
 }:
 with pkgs.haskell.lib;
 let
-  generic-storable-src = pkgs.fetchFromGitHub {
-    owner = "tanakh";
-    repo = "generic-storable";
-    rev = "e0293a5734068b80038259bab664aef62bded7d9";
-    sha256 = "0ijkqf9dkbzyx1wdnjm3p4kbkp9bcdz0xsgpwbq2nkr6b70856mc";
-  };
-  odpic = pkgs.callPackage ./nix/odpic {};
-  odpic-samples = pkgs.callPackage ./nix/odpic/samples.nix { inherit odpic; };
+  # derive-storable-plugin-src = pkgs.fetchFromGitHub {
+  #   repo = "derive-storable-plugin";
+  #   owner = "mkloczko";
+  #   rev = "0a01dfb483db5bd15ef6b2400b4192b23ab82b2e";
+  #   sha256 = "ppLkCL9O6jbjawj4JVwy0z3CIEFzis6jrTMb713pvPE=";
+  # };
   overrides = self: super: {
-    generic-storable = dontCheck (doJailbreak (super.callCabal2nix "generic-storable" generic-storable-src {}));
+  #  derive-storable-plugin = self.callCabal2nix "derive-storable-plugin" derive-storable-plugin-src {};
+    derive-storable = enableCabalFlag super.derive-storable "sumtypes";
   };
-  hPkgs = pkgs.haskellPackages.override { inherit overrides; };
+  hPkgs = pkgs.haskell.packages.ghc961.override { inherit overrides; };
   src = ./.;
-  oracle-simple = hPkgs.callCabal2nix "oracle-simple" src { inherit odpic; };
-  gen = pkgs.writeScriptBin "gen" ''
-    ${pkgs.ghc}/bin/hsc2hs -I${odpic}/include \
-       ./src/Database/Oracle/Simple/Internal.hsc
-  '';
+  oracle-simple = hPkgs.callCabal2nix "oracle-simple" src { inherit (pkgs) odpic; };
 in
 {
-  inherit (hPkgs) generic-storable;
-  inherit gen odpic odpic-samples;
   pkg = appendConfigureFlags (disableCabalFlag oracle-simple "default_paths")
-    [ "--extra-include-dirs=${odpic}/include"
-      "--extra-lib-dirs=${odpic}/lib"
+    [ "--extra-include-dirs=${pkgs.odpic}/include"
+      "--extra-lib-dirs=${pkgs.odpic}/lib"
     ];
 }

@@ -35,7 +35,7 @@ library
   other-modules:
     Database.Oracle.Simple.Internal
   build-depends:
-    base < 5, generic-storable
+    base < 5, derive-storable
   hs-source-dirs:
     src
   extra-libraries:
