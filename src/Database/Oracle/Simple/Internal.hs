@@ -873,9 +873,16 @@ mkFromRow wantType dpiGetDataFn = RowParser $ \dpiStmt pos -> do
 data Data
   = Data
   { dataIsNull :: CInt
-  , dataValue :: CDouble
+  , dataValue :: DataBuffer
   } deriving stock (Generic, Show, Eq)
     deriving anyclass GStorable
+
+data DataBuffer
+  = AsDouble CDouble
+  | AsTimestamp DPITimeStamp
+  | AsBytes DPIBytes
+  deriving stock (Generic, Show, Eq)
+  deriving anyclass GStorable
 
 -- instance Storable Data where
 --   sizeOf _ = 48
@@ -893,13 +900,6 @@ data Data
 --     int isNull;
 --     dpiDataBuffer value;
 -- };
-
-data DataBuffer
-  = DataBuffer
-  { asDouble :: CDouble
-  , asTimestamp :: DPITimeStamp
-  } deriving stock (Generic, Show, Eq)
-    deriving anyclass GStorable
 
 data DPINativeTypeNum
   = DPI_NATIVE_TYPE_INT64
