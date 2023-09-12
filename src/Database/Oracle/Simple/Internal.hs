@@ -797,32 +797,6 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
-data OracleValue = ODouble CDouble | OTimestamp DPITimeStamp
-  deriving (Eq, Show)
-
-getQueryValue'
-  :: DPIStmt
-  -> DPINativeTypeNum -- ??
-  -> CUInt -- pos
-  -> IO OracleValue
-getQueryValue' stmt wantTyp pos = do
-  alloca $ \(buffer :: Ptr (Ptr Data)) -> do
-    alloca $ \(typ :: Ptr CUInt) -> do
-      throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer -- (**data)
-      (toNativeTypeNum <$> peek typ) >>= \case
-        Nothing ->
-          error "getQueryValue: Invalid type returned"
-        Just typ -> do
-          unless (typ == wantTyp) $ error "type mismatch"
-          dataBuffer <- peek buffer
-          case typ of
-            DPI_NATIVE_TYPE_DOUBLE ->
-              fmap ODouble $ dpiData_getDouble dataBuffer
-            DPI_NATIVE_TYPE_TIMESTAMP ->
-              fmap OTimestamp . peek =<< dpiData_getTimestamp dataBuffer
-            _ -> error "type unsupported"
-
-
 newtype Getter a = Getter { runGetter :: DPIStmt -> IO a }
 
 getRow :: forall a. FromRow a => DPIStmt -> IO a
@@ -837,30 +811,23 @@ instance Applicative Getter where
     fn <- runGetter f dpiStmt
     fn <$> runGetter g dpiStmt
 
-getDouble :: Position -> Getter CDouble
-getDouble pos = Getter $ \dpiStmt -> do
-  valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_DOUBLE (fromIntegral $ getPosition pos)
-  case valPerhaps of
-    ODouble d -> pure d
-    _ -> error "type mismatch"
-
-getTimestamp :: Position -> Getter DPITimeStamp
-getTimestamp pos = Getter $ \dpiStmt -> do
-  valPerhaps <- getQueryValue' dpiStmt DPI_NATIVE_TYPE_TIMESTAMP (fromIntegral $ getPosition pos)
-  case valPerhaps of
-    OTimestamp d -> pure d
-    _ -> error "type mismatch"
-
 newtype Position = Position { getPosition :: Int }
 
 class FromField a where
   fromField :: Position -> Getter a
 
+fromFieldForType :: DPINativeTypeNum -> (Ptr Data -> IO a) -> Position -> Getter a
+fromFieldForType wantType dpiGetDataFn pos = Getter $ \dpiStmt -> do
+  (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
+  unless (gotType == wantType) $
+    error $ "type mismatch: expected " <> show wantType <> ", but got " <> show gotType
+  dpiGetDataFn dataBuf
+
 instance FromField CDouble where
-  fromField = getDouble
+  fromField = fromFieldForType DPI_NATIVE_TYPE_DOUBLE dpiData_getDouble
 
 instance FromField DPITimeStamp where
-  fromField = getTimestamp
+  fromField = fromFieldForType DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
 
 class FromRow a where
   fromRow :: Getter a
