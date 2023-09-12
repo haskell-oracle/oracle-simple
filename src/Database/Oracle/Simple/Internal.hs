@@ -26,6 +26,7 @@ import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
 import System.IO.Unsafe
+import Data.Text
 
 newtype DPIStmt = DPIStmt (Ptr DPIStmt)
   deriving (Show, Eq)
@@ -533,6 +534,10 @@ data DPIBytes
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
 
+peekDPIBytes :: Ptr Data -> IO Text
+peekDPIBytes = buildString <=< peek <=< dpiData_getBytes
+ where buildString DPIBytes{..} = pack <$> peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+
 -- typedef struct {
 --     char *ptr;
 --     uint32_t length;
@@ -654,6 +659,7 @@ data DPIContextCreateParams
 
  -- int dpiContext_initCommonCreateParams(const dpiContext *context,
  --        dpiCommonCreateParams *params);
+ --
 
 
 foreign import ccall "dpiContext_getError"
@@ -851,6 +857,9 @@ instance FromField CDouble where
 instance FromField DPITimeStamp where
   fromField = FieldParser DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
 
+instance FromField Text where
+  fromField = FieldParser DPI_NATIVE_TYPE_BYTES peekDPIBytes
+
 --
 
 mkFromRow :: DPINativeTypeNum -> (Ptr Data -> IO a) -> RowParser a
@@ -977,5 +986,9 @@ stmtRelease = throwOracleError <=< dpiStmt_release
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr Data -> IO CDouble
+
+-- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
+foreign import ccall "dpiData_getBytes"
+  dpiData_getBytes :: Ptr Data -> IO (Ptr DPIBytes)
 
 --

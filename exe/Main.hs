@@ -8,6 +8,7 @@ import Control.Monad
 import Database.Oracle.Simple
 import Foreign.Storable
 import Foreign.C.Types
+import Data.Text
 
 main :: IO ()
 main = foo
@@ -23,19 +24,21 @@ instance FromField RowCount where
 data ReturnedRow = ReturnedRow
   { count :: RowCount
   , sysdate :: DPITimeStamp
+  , message :: Text
   } deriving Show
 
 instance FromRow ReturnedRow where
   fromRow = do
     count <- field
     sysdate <- field
+    message <- field
     pure ReturnedRow {..}
   -- or:
   -- fromRow = ReturnedRow <$> field <*> field
 
 foo :: IO ()
 foo = do
-  let stmt = "select count(*), sysdate from dual"
+  let stmt = "select count(*), sysdate, 'hello world' from dual"
   putStrLn stmt
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   stmt <- prepareStmt conn stmt
