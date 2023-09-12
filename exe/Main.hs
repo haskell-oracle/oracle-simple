@@ -17,8 +17,8 @@ foreign import ccall safe "example" example :: IO ()
 newtype RowCount = RowCount { getRowCount :: CDouble }
   deriving Show
 
-instance FromRow RowCount where
-  fromRow = RowCount <$> fromRow
+instance FromField RowCount where
+  fromField = RowCount <$> fromField
 
 data ReturnedRow = ReturnedRow
   { count :: RowCount
@@ -27,11 +27,11 @@ data ReturnedRow = ReturnedRow
 
 instance FromRow ReturnedRow where
   fromRow = do
-    count <- fromRow
-    sysdate <- fromRow
+    count <- field
+    sysdate <- field
     pure ReturnedRow {..}
   -- or:
-  -- fromRow = ReturnedRow <$> fromRow <*> fromRow
+  -- fromRow = ReturnedRow <$> field <*> field
 
 foo :: IO ()
 foo = do

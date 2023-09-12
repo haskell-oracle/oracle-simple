@@ -797,44 +797,69 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
-newtype Getter a = Getter { runGetter :: DPIStmt -> Position -> IO a }
+newtype RowParser a = RowParser { runRowParser :: DPIStmt -> Position -> IO a }
 
 getRow :: forall a. FromRow a => DPIStmt -> IO a
-getRow stmt = runGetter fromRow stmt 1
+getRow stmt = runRowParser fromRow stmt 1
 
-instance Functor Getter where
-  fmap f g = Getter $ \dpiStmt pos -> f <$> runGetter g dpiStmt pos
+instance Functor RowParser where
+  fmap f g = RowParser $ \dpiStmt pos -> f <$> runRowParser g dpiStmt pos
 
-instance Applicative Getter where
-  pure a = Getter $ \_ _ -> pure a
-  f <*> g = Getter $ \dpiStmt pos -> do
-    fn <- runGetter f dpiStmt pos
-    fn <$> runGetter g dpiStmt (pos + 1)
+instance Applicative RowParser where
+  pure a = RowParser $ \_ _ -> pure a
+  f <*> g = RowParser $ \dpiStmt pos -> do
+    fn <- runRowParser f dpiStmt pos
+    fn <$> runRowParser g dpiStmt (pos + 1)
 
-instance Monad Getter where
+instance Monad RowParser where
   return = pure
-  f >>= g = Getter $ \dpiStmt pos -> do
-    f <- runGetter f dpiStmt pos
-    runGetter (g f) dpiStmt (pos + 1)
+  f >>= g = RowParser $ \dpiStmt pos -> do
+    f <- runRowParser f dpiStmt pos
+    runRowParser (g f) dpiStmt (pos + 1)
 
 newtype Position = Position { getPosition :: Int }
   deriving newtype Num
 
 class FromRow a where
-  fromRow :: Getter a
+  fromRow :: RowParser a
 
-mkFromRow :: DPINativeTypeNum -> (Ptr Data -> IO a) -> Getter a
-mkFromRow wantType dpiGetDataFn = Getter $ \dpiStmt pos -> do
+--
+data FieldParser a = FieldParser
+  { dpiNativeType :: DPINativeTypeNum
+  , dpiGetDataFn  :: Ptr Data -> IO a
+  }
+
+instance Functor FieldParser where
+  fmap f FieldParser{..} = FieldParser dpiNativeType (fmap f <$> dpiGetDataFn)
+
+class FromField a where
+  fromField :: FieldParser a
+
+field :: FromField a => RowParser a
+field = fieldWith fromField
+
+fieldWith :: FieldParser a -> RowParser a
+fieldWith FieldParser{..} = RowParser $ \dpiStmt pos -> do
+  (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
+  unless (gotType == dpiNativeType) $
+    error $ "type mismatch: expected " <> show dpiNativeType <> ", but got " <> show gotType
+  dpiGetDataFn dataBuf
+
+instance FromField CDouble where
+  fromField = FieldParser DPI_NATIVE_TYPE_DOUBLE dpiData_getDouble
+
+instance FromField DPITimeStamp where
+  fromField = FieldParser DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
+
+--
+
+mkFromRow :: DPINativeTypeNum -> (Ptr Data -> IO a) -> RowParser a
+mkFromRow wantType dpiGetDataFn = RowParser $ \dpiStmt pos -> do
   (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
   unless (gotType == wantType) $
     error $ "type mismatch: expected " <> show wantType <> ", but got " <> show gotType
   dpiGetDataFn dataBuf
 
-instance FromRow CDouble where
-  fromRow = mkFromRow DPI_NATIVE_TYPE_DOUBLE dpiData_getDouble
-
-instance FromRow DPITimeStamp where
-  fromRow = mkFromRow DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
 
 data Data
   = Data
@@ -954,18 +979,3 @@ foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr Data -> IO CDouble
 
 --
-{-
-data FieldInfo a = FieldInfo
-  { nativeType :: DPINativeTypeNum
-  , dpiGetDataFn :: Ptr Data -> IO a
-  }
-
-class FromField a where
-  field :: FieldInfo a
-
-instance FromField CDouble where
-  field = FieldInfo DPI_NATIVE_TYPE_DOUBLE dpiData_getDouble
-
-instance FromField DPITimeStamp where
-  field = FieldInfo DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
--}
