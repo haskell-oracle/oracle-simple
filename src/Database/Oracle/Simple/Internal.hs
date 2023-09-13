@@ -800,78 +800,8 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
-newtype RowParser a = RowParser { runRowParser :: DPIStmt -> Position -> IO a }
-
-getRow :: forall a. FromRow a => DPIStmt -> IO a
-getRow stmt = runRowParser fromRow stmt 1
-
-instance Functor RowParser where
-  fmap f g = RowParser $ \dpiStmt pos -> f <$> runRowParser g dpiStmt pos
-
-instance Applicative RowParser where
-  pure a = RowParser $ \_ _ -> pure a
-  f <*> g = RowParser $ \dpiStmt pos -> do
-    fn <- runRowParser f dpiStmt pos
-    fn <$> runRowParser g dpiStmt (pos + 1)
-
-instance Monad RowParser where
-  return = pure
-  f >>= g = RowParser $ \dpiStmt pos -> do
-    f <- runRowParser f dpiStmt pos
-    runRowParser (g f) dpiStmt (pos + 1)
-
 newtype Position = Position { getPosition :: Int }
   deriving newtype (Num, Show)
-
-class FromRow a where
-  fromRow :: RowParser a
-
---
-data FieldParser a = FieldParser
-  { dpiNativeType :: DPINativeTypeNum
-  , readDPIDataBuffer  :: ReadDPIBuffer a
-  }
-
-instance Functor FieldParser where
-  fmap f FieldParser{..} = FieldParser dpiNativeType (fmap f <$> readDPIDataBuffer)
-
-class FromField a where
-  fromField :: FieldParser a
-
-field :: FromField a => RowParser a
-field = fieldWith fromField
-
-fieldWith :: FieldParser a -> RowParser a
-fieldWith FieldParser{..} = RowParser $ \dpiStmt pos -> do
-  (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
-  unless (gotType == dpiNativeType) $
-    throwIO $ TypeMismatch dpiNativeType gotType pos
-  readDPIDataBuffer dataBuf
-
-instance FromField Double where
-  fromField = FieldParser DPI_NATIVE_TYPE_DOUBLE getDouble
-
-instance FromField DPITimeStamp where
-  fromField = FieldParser DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
-
-instance FromField Text where
-  fromField = FieldParser DPI_NATIVE_TYPE_BYTES getText
-
-instance FromField Int64 where
-  fromField = FieldParser DPI_NATIVE_TYPE_DOUBLE getInt64
-
-data RowParseError
-  = TypeMismatch
-  -- ^ We encountered a type that we were not expecting.
-  { expectedType :: DPINativeTypeNum
-  -- ^ The DPI native type we were expecting
-  , gotType :: DPINativeTypeNum
-  -- ^ The DPI native type we got
-  , rowPosition :: Position
-  -- ^ Row position where type mismatch was encountered (1-indexed)
-  } deriving Show
-
-instance Exception RowParseError
 
 data Data
   = Data
@@ -989,23 +919,6 @@ stmtRelease = throwOracleError <=< dpiStmt_release
 foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr Data -> IO CDouble
 
--- | Alias for a function that fetches a value from the DPI data buffer
-type ReadDPIBuffer a = Ptr Data -> IO a
-
--- | Get a Double value from the data buffer
-getDouble :: ReadDPIBuffer Double
-getDouble = coerce <$> dpiData_getDouble
-
--- | Get an Int64 value from the data buffer
-getInt64 :: ReadDPIBuffer Int64
-getInt64 = fmap floor . getDouble
-
--- | Get Text from the data buffer
-getText :: ReadDPIBuffer Text
-getText = buildString <=< peek <=< dpiData_getBytes
- where
-  buildString DPIBytes{..} =
-    pack <$> peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
 
 -- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
 foreign import ccall "dpiData_getBytes"

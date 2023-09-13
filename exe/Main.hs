@@ -29,20 +29,18 @@ data ReturnedRow = ReturnedRow
   } deriving Show
 
 instance FromRow ReturnedRow where
-  fromRow = do
-    count <- field
-    sysdate <- field
-    message <- field
-    pure ReturnedRow {..}
-  -- or:
-  -- fromRow = ReturnedRow <$> field <*> field
+  fromRow =
+    ReturnedRow
+      <$> (field $ Position 1)
+      <*> (field $ Position 2)
+      <*> (field $ Position 3)
 
 foo :: IO ()
 foo = do
-  let stmt = "select count(*), sysdate, 'hello world' from dual"
-  putStrLn stmt
+  let stmtStr = "select count(*), sysdate, 'hello world' from dual"
+  putStrLn stmtStr
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
-  stmt <- prepareStmt conn stmt
+  stmt <- prepareStmt conn stmtStr
   execute stmt DPI_MODE_EXEC_DEFAULT
   found <- fetch stmt
   unless (found == 0) $ do
