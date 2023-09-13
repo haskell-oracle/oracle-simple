@@ -12,6 +12,7 @@
 {-# LANGUAGE BinaryLiterals     #-}
 module Database.Oracle.Simple.Internal where
 
+import Data.Coerce
 import Control.Exception
 import Control.Monad
 import Data.IORef
@@ -534,10 +535,6 @@ data DPIBytes
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
 
-peekDPIBytes :: Ptr Data -> IO Text
-peekDPIBytes = buildString <=< peek <=< dpiData_getBytes
- where buildString DPIBytes{..} = pack <$> peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
-
 -- typedef struct {
 --     char *ptr;
 --     uint32_t length;
@@ -832,11 +829,11 @@ class FromRow a where
 --
 data FieldParser a = FieldParser
   { dpiNativeType :: DPINativeTypeNum
-  , dpiGetDataFn  :: Ptr Data -> IO a
+  , readDPIDataBuffer  :: ReadDPIBuffer a
   }
 
 instance Functor FieldParser where
-  fmap f FieldParser{..} = FieldParser dpiNativeType (fmap f <$> dpiGetDataFn)
+  fmap f FieldParser{..} = FieldParser dpiNativeType (fmap f <$> readDPIDataBuffer)
 
 class FromField a where
   fromField :: FieldParser a
@@ -849,16 +846,19 @@ fieldWith FieldParser{..} = RowParser $ \dpiStmt pos -> do
   (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
   unless (gotType == dpiNativeType) $
     throwIO $ TypeMismatch dpiNativeType gotType pos
-  dpiGetDataFn dataBuf
+  readDPIDataBuffer dataBuf
 
-instance FromField CDouble where
-  fromField = FieldParser DPI_NATIVE_TYPE_DOUBLE dpiData_getDouble
+instance FromField Double where
+  fromField = FieldParser DPI_NATIVE_TYPE_DOUBLE getDouble
 
 instance FromField DPITimeStamp where
   fromField = FieldParser DPI_NATIVE_TYPE_TIMESTAMP (peek <=< dpiData_getTimestamp)
 
 instance FromField Text where
-  fromField = FieldParser DPI_NATIVE_TYPE_BYTES peekDPIBytes
+  fromField = FieldParser DPI_NATIVE_TYPE_BYTES getText
+
+instance FromField Int64 where
+  fromField = FieldParser DPI_NATIVE_TYPE_DOUBLE getInt64
 
 data RowParseError
   = TypeMismatch
@@ -985,15 +985,27 @@ stmtRelease
   -> IO ()
 stmtRelease = throwOracleError <=< dpiStmt_release
 
--- class FromField a where
---   fromField :: IO a
-
--- instance FromField a where
---   fromField :: a ->
-
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr Data -> IO CDouble
+
+-- | Alias for a function that fetches a value from the DPI data buffer
+type ReadDPIBuffer a = Ptr Data -> IO a
+
+-- | Get a Double value from the data buffer
+getDouble :: ReadDPIBuffer Double
+getDouble = coerce <$> dpiData_getDouble
+
+-- | Get an Int64 value from the data buffer
+getInt64 :: ReadDPIBuffer Int64
+getInt64 = fmap floor . getDouble
+
+-- | Get Text from the data buffer
+getText :: ReadDPIBuffer Text
+getText = buildString <=< peek <=< dpiData_getBytes
+ where
+  buildString DPIBytes{..} =
+    pack <$> peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
 
 -- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
 foreign import ccall "dpiData_getBytes"

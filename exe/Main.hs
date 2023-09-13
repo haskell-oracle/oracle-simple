@@ -16,7 +16,7 @@ main = foo
 
 foreign import ccall safe "example" example :: IO ()
 
-newtype RowCount = RowCount { getRowCount :: CDouble }
+newtype RowCount = RowCount { getRowCount :: Int64 }
   deriving Show
 
 instance FromField RowCount where
