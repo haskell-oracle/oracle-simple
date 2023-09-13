@@ -9,6 +9,7 @@ import Database.Oracle.Simple
 import Foreign.Storable
 import Foreign.C.Types
 import Data.Text
+import Data.Int
 
 main :: IO ()
 main = foo

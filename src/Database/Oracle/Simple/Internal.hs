@@ -824,7 +824,7 @@ instance Monad RowParser where
     runRowParser (g f) dpiStmt (pos + 1)
 
 newtype Position = Position { getPosition :: Int }
-  deriving newtype Num
+  deriving newtype (Num, Show)
 
 class FromRow a where
   fromRow :: RowParser a
@@ -848,7 +848,7 @@ fieldWith :: FieldParser a -> RowParser a
 fieldWith FieldParser{..} = RowParser $ \dpiStmt pos -> do
   (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
   unless (gotType == dpiNativeType) $
-    error $ "type mismatch: expected " <> show dpiNativeType <> ", but got " <> show gotType
+    throwIO $ TypeMismatch dpiNativeType gotType pos
   dpiGetDataFn dataBuf
 
 instance FromField CDouble where
@@ -860,15 +860,18 @@ instance FromField DPITimeStamp where
 instance FromField Text where
   fromField = FieldParser DPI_NATIVE_TYPE_BYTES peekDPIBytes
 
---
+data RowParseError
+  = TypeMismatch
+  -- ^ We encountered a type that we were not expecting.
+  { expectedType :: DPINativeTypeNum
+  -- ^ The DPI native type we were expecting
+  , gotType :: DPINativeTypeNum
+  -- ^ The DPI native type we got
+  , rowPosition :: Position
+  -- ^ Row position where type mismatch was encountered (1-indexed)
+  } deriving Show
 
-mkFromRow :: DPINativeTypeNum -> (Ptr Data -> IO a) -> RowParser a
-mkFromRow wantType dpiGetDataFn = RowParser $ \dpiStmt pos -> do
-  (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
-  unless (gotType == wantType) $
-    error $ "type mismatch: expected " <> show wantType <> ", but got " <> show gotType
-  dpiGetDataFn dataBuf
-
+instance Exception RowParseError
 
 data Data
   = Data
@@ -876,13 +879,18 @@ data Data
   , dataValue :: DataBuffer
   } deriving stock (Generic, Show, Eq)
     deriving anyclass GStorable
-
+ {-
 data DataBuffer
   = AsDouble CDouble
   | AsTimestamp DPITimeStamp
   | AsBytes DPIBytes
   deriving stock (Generic, Show, Eq)
-  deriving anyclass GStorable
+  deriving anyclass GStorable -}
+
+newtype DataBuffer = DataBuffer (Ptr DataBuffer)
+  deriving (Show, Eq)
+  deriving newtype Storable
+
 
 -- instance Storable Data where
 --   sizeOf _ = 48
@@ -990,5 +998,3 @@ foreign import ccall "dpiData_getDouble"
 -- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
 foreign import ccall "dpiData_getBytes"
   dpiData_getBytes :: Ptr Data -> IO (Ptr DPIBytes)
-
---
