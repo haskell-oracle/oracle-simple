@@ -23,7 +23,7 @@ executable example
   main-is:
     Main.hs
   build-depends:
-    base < 5, oracle-simple
+    base < 5, oracle-simple, text
   hs-source-dirs:
     exe
   default-language:
@@ -33,9 +33,9 @@ library
   exposed-modules:
     Database.Oracle.Simple
   other-modules:
-    Database.Oracle.Simple.Internal
+    Database.Oracle.Simple.Internal, Database.Oracle.Simple.FromRow, Database.Oracle.Simple.FromField
   build-depends:
-    base < 5, derive-storable
+    base < 5, derive-storable, text
   hs-source-dirs:
     src
   extra-libraries:
