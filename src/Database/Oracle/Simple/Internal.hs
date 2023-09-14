@@ -61,15 +61,9 @@ data ConnectionParams
 
 createConn
   :: ConnectionParams
---  -> DPICommonCreateParams
---  -> DPIConnCreateParams
   -> IO DPIConn
 createConn params = do
       ctx <- readIORef globalContext
---  alloca $ \commonCreateParamsPtr -> do
---    poke commonCreateParamsPtr commonCreateParams
---    alloca $ \connCreateParamsPtr -> do
---      poke connCreateParamsPtr connCreateParams
       alloca $ \connPtr -> do
         (userCString, fromIntegral -> userLen) <- newCStringLen (user params)
         (passCString, fromIntegral -> passLen) <- newCStringLen (pass params)
@@ -88,6 +82,12 @@ createConn params = do
             connPtr
         peek connPtr -- error "createConn: oh no" -- throwIO ConnectionException
              -- TODO: fetch errorInfo struct... somehow?
+
+-- DPI_EXPORT int dpiConn_create(const dpiContext *context, const char *userName,
+--         uint32_t userNameLength, const char *password, uint32_t passwordLength,
+--         const char *connectString, uint32_t connectStringLength,
+--         const dpiCommonCreateParams *commonParams,
+--         dpiConnCreateParams *createParams, dpiConn **conn);
 
 foreign import ccall unsafe "dpiConn_create"
   dpiConn_create
@@ -112,13 +112,6 @@ foreign import ccall unsafe "dpiConn_create"
     -> Ptr DPIConn
     -- ^ dpi * conn
     -> IO CInt
-
--- DPI_EXPORT int dpiConn_create(const dpiContext *context, const char *userName,
---         uint32_t userNameLength, const char *password, uint32_t passwordLength,
---         const char *connectString, uint32_t connectStringLength,
---         const dpiCommonCreateParams *commonParams,
---         dpiConnCreateParams *createParams, dpiConn **conn);
-
 
 -- | typedef uint32_t dpiAuthMode;
 data DPIAuthMode
@@ -166,7 +159,7 @@ instance Storable DPIAuthMode where
   poke ptr mode =
     poke (castPtr ptr) (toDPIAuthMode mode)
 
--- | typedef uint32_t dpiPurity;
+-- typedef uint32_t dpiPurity;
 data DPIPurity
   = DPI_PURITY_DEFAULT
   | DPI_PURITY_NEW
@@ -191,6 +184,31 @@ fromDPIPurity 0 = Just DPI_PURITY_DEFAULT
 fromDPIPurity 1 = Just DPI_PURITY_NEW
 fromDPIPurity 2 = Just DPI_PURITY_SELF
 fromDPIPurity _ = Nothing
+
+-- struct dpiConnCreateParams {
+--     dpiAuthMode authMode;
+--     const char *connectionClass;
+--     uint32_t connectionClassLength;
+--     dpiPurity purity;
+--     const char *newPassword;
+--     uint32_t newPasswordLength;
+--     dpiAppContext *appContext;
+--     uint32_t numAppContext;
+--     int externalAuth;
+--     void *externalHandle;
+--     dpiPool *pool;
+--     const char *tag;
+--     uint32_t tagLength;
+--     int matchAnyTag;
+--     const char *outTag;
+--     uint32_t outTagLength;
+--     int outTagFound;
+--     dpiShardingKeyColumn *shardingKeyColumns;
+--     uint8_t numShardingKeyColumns;
+--     dpiShardingKeyColumn *superShardingKeyColumns;
+--     uint8_t numSuperShardingKeyColumns;
+--     int outNewSession;
+-- };
 
 data DPIConnCreateParams
   = DPIConnCreateParams
@@ -219,29 +237,16 @@ data DPIConnCreateParams
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
 
--- struct dpiConnCreateParams {
---     dpiAuthMode authMode;
---     const char *connectionClass;
---     uint32_t connectionClassLength;
---     dpiPurity purity;
---     const char *newPassword;
---     uint32_t newPasswordLength;
---     dpiAppContext *appContext;
---     uint32_t numAppContext;
---     int externalAuth;
---     void *externalHandle;
---     dpiPool *pool;
---     const char *tag;
---     uint32_t tagLength;
---     int matchAnyTag;
---     const char *outTag;
---     uint32_t outTagLength;
---     int outTagFound;
---     dpiShardingKeyColumn *shardingKeyColumns;
---     uint8_t numShardingKeyColumns;
---     dpiShardingKeyColumn *superShardingKeyColumns;
---     uint8_t numSuperShardingKeyColumns;
---     int outNewSession;
+-- struct dpiCommonCreateParams {
+--     dpiCreateMode createMode;
+--     const char *encoding;
+--     const char *nencoding;
+--     const char *edition;
+--     ui nt32_t editionLength;
+--     const char *driverName;
+--     uint32_t driverNameLength;
+--     int sodaMetadataCache;
+--     uint32_t stmtCacheSize;
 -- };
 
 data DPICommonCreateParams
@@ -257,23 +262,6 @@ data DPICommonCreateParams
   , stmtCacheSize     :: CInt
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
-
--- instance Storable DPICommonCreateParams where
---   sizeOf = sizeOfDefault
---   alignment = alignmentDefault
---   peek = peekDefault
---   poke = pokeDefault
-
-  -- poke ptr DPICommonCreateParams {..} = do
-  --   poke (#{ptr dpiCommonCreateParams, createMode} ptr) (toDPICreateMode createMode)
-  --   poke (#{ptr dpiCommonCreateParams, encoding} ptr) =<< newCString encoding
-  --   poke (#{ptr dpiCommonCreateParams, nencoding} ptr) =<< newCString nencoding
-  --   poke (#{ptr dpiCommonCreateParams, edition} ptr) =<< newCString edition
-  --   poke (#{ptr dpiCommonCreateParams, editionLength} ptr) editionLength
-  --   poke (#{ptr dpiCommonCreateParams, driverName} ptr) =<< newCString driverName
-  --   poke (#{ptr dpiCommonCreateParams, driverNameLength} ptr) driverNameLength
-  --   poke (#{ptr dpiCommonCreateParams, sodaMetadataCache} ptr) sodaMetadataCache
-  --   poke (#{ptr dpiCommonCreateParams, stmtCacheSize} ptr) stmtCacheSize
 
 -- | typedef uint32_t dpiCreateMode;
 data DPICreateMode
@@ -303,18 +291,6 @@ fromDPICreateMode 0x00000001 = Just DPI_MODE_CREATE_THREADED
 fromDPICreateMode 0x00000004 = Just DPI_MODE_CREATE_EVENTS
 fromDPICreateMode _ = Nothing
 
--- struct dpiCommonCreateParams {
---     dpiCreateMode createMode;
---     const char *encoding;
---     const char *nencoding;
---     const char *edition;
---     ui nt32_t editionLength;
---     const char *driverName;
---     uint32_t driverNameLength;
---     int sodaMetadataCache;
---     uint32_t stmtCacheSize;
--- };
-
 foreign import ccall unsafe "context_create"
   dpiContext_create
     :: CInt
@@ -334,6 +310,10 @@ globalContext = unsafePerformIO (newIORef =<< createContext)
 foreign import ccall "getMajorVersion" getMajorVersion :: IO CInt
 foreign import ccall "getMinorVersion" getMinorVersion :: IO CInt
 
+-- dpiContext_create(majorVersion, minorVersion, context, errorInfo) \
+--     dpiContext_createWithParams(majorVersion, minorVersion, NULL, context, \
+--             errorInfo)
+
 createContext
   :: IO DPIContext
 createContext = do
@@ -350,10 +330,6 @@ createContext = do
       if statusCode == 0
         then peek contextPtr
         else (throwIO <=< toOracleError <=< peek) errorInfoPtr
-
--- dpiContext_create(majorVersion, minorVersion, context, errorInfo) \
---     dpiContext_createWithParams(majorVersion, minorVersion, NULL, context, \
---             errorInfo)
 
 renderErrorInfo :: ErrorInfo -> IO ()
 renderErrorInfo ErrorInfo { errorInfoCode, errorInfoMessage } = do
@@ -423,6 +399,15 @@ throwOracleError returnCode = do
 
 instance Exception OracleError
 
+-- struct dpiVersionInfo {
+--     int versionNum;
+--     int releaseNum;
+--     int updateNum;
+--     int portReleaseNum;
+--     int portUpdateNum;
+--     uint32_t fullVersionNum;
+-- };
+
 data VersionInfo
   = VersionInfo
   { versionNum :: CInt
@@ -434,14 +419,8 @@ data VersionInfo
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
 
--- struct dpiVersionInfo {
---     int versionNum;
---     int releaseNum;
---     int updateNum;
---     int portReleaseNum;
---     int portUpdateNum;
---     uint32_t fullVersionNum;
--- };
+-- DPI_EXPORT int dpiContext_getClientVersion(const dpiContext *context,
+--         dpiVersionInfo *versionInfo);
 
 getClientVersion
   :: IO VersionInfo
@@ -459,7 +438,8 @@ foreign import ccall "dpiContext_getClientVersion"
     -> Ptr VersionInfo
     -> IO Int
 
--- DPI_EXPORT int dpiContext_getClientVersion(const dpiContext *context,
+-- DPI_EXPORT int dpiConn_getServerVersion(dpiConn *conn,
+--         const char **releaseString, uint32_t *releaseStringLength,
 --         dpiVersionInfo *versionInfo);
 
 foreign import ccall "dpiConn_getServerVersion"
@@ -483,9 +463,8 @@ getServerVersion con versionInfo = do
         then (peekCString <=< peek) releaseStringPtr
         else error $ show status <> " oh no!"
 
--- DPI_EXPORT int dpiConn_getServerVersion(dpiConn *conn,
---         const char **releaseString, uint32_t *releaseStringLength,
---         dpiVersionInfo *versionInfo);
+-- DPI_EXPORT int dpiContext_initCommonCreateParams(const dpiContext *context,
+--        dpiCommonCreateParams *params);
 
 foreign import ccall "dpiContext_initCommonCreateParams"
   dpiContext_initCommonCreateParams
@@ -504,8 +483,8 @@ withCommonCreateParams f = do
       error $ "common create params isn't 0" <> show status
     f =<< peek commonCreateParamsPtr
 
--- dpiContext_initCommonCreateParams(const dpiContext *context,
---         dpiCommonCreateParams *params);
+-- DPI_EXPORT int dpiContext_initConnCreateParams(const dpiContext *context,
+--        dpiConnCreateParams *params);
 
 foreign import ccall "dpiContext_initConnCreateParams"
   dpiContext_initConnCreateParams
@@ -524,8 +503,11 @@ withConnCreateParams f = do
       error $ "conn create params isn't 0" <> show status
     f =<< peek connCreateParamsPtr
 
--- DPI_EXPORT int dpiContext_initConnCreateParams(const dpiContext *context,
---        dpiConnCreateParams *params);
+-- typedef struct {
+--     char *ptr;
+--     uint32_t length;
+--     const char *encoding;
+-- } dpiBytes;
 
 data DPIBytes
   = DPIBytes
@@ -536,11 +518,12 @@ data DPIBytes
     deriving anyclass GStorable
 
 -- typedef struct {
---     char *ptr;
---     uint32_t length;
---     const char *encoding;
--- } dpiBytes;
-
+--     int32_t days;
+--     int32_t hours;
+--     int32_t minutes;
+--     int32_t seconds;
+--     int32_t fseconds;
+-- } dpiIntervalDS;
 
 data DPIIntervalDS
   = DPIIntervalDS
@@ -552,14 +535,10 @@ data DPIIntervalDS
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
 
--- // structure used for transferring day/seconds intervals to/from ODPI-C
 -- typedef struct {
---     int32_t days;
---     int32_t hours;
---     int32_t minutes;
---     int32_t seconds;
---     int32_t fseconds;
--- } dpiIntervalDS;
+--     int32_t years;
+--     int32_t months;
+-- } dpiIntervalYM;
 
 data DPIIntervalYM
   = DPIIntervalYM
@@ -569,10 +548,16 @@ data DPIIntervalYM
     deriving anyclass GStorable
 
 -- typedef struct {
---     int32_t years;
---     int32_t months;
--- } dpiIntervalYM;
-
+--     int16_t year;
+--     uint8_t month;
+--     uint8_t day;
+--     uint8_t hour;
+--     uint8_t minute;
+--     uint8_t second;
+--     uint32_t fsecond;
+--     int8_t tzHourOffset;
+--     int8_t tzMinuteOffset;
+-- } dpiTimestamp;
 
 data DPITimeStamp
   = DPITimeStamp
@@ -588,33 +573,14 @@ data DPITimeStamp
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
 
--- instance Storable DPITimeStamp where
---   sizeOf _ = 16
---   alignment _ = 16
---   poke = error "failed"
---   peek ptr = do
---     DPITimeStamp
---       <$> peekByteOff ptr  0
---       <*> peekByteOff ptr  2
---       <*> peekByteOff ptr  3
---       <*> peekByteOff ptr  4
---       <*> peekByteOff ptr  5
---       <*> peekByteOff ptr  6
---       <*> peekByteOff ptr 10
---       <*> peekByteOff ptr 11
---       <*> peekByteOff ptr 12
-
--- typedef struct {
---     int16_t year;
---     uint8_t month;
---     uint8_t day;
---     uint8_t hour;
---     uint8_t minute;
---     uint8_t second;
---     uint32_t fsecond;
---     int8_t tzHourOffset;
---     int8_t tzMinuteOffset;
--- } dpiTimestamp;
+-- struct dpiAppContext {
+--     const char *namespaceName;
+--     uint32_t namespaceNameLength;
+--     const char *name;
+--     uint32_t nameLength;
+--     const char *value;
+--     uint32_t valueLength;
+-- };
 
 data DPIAppContext
   = DPIAppContext
@@ -627,13 +593,12 @@ data DPIAppContext
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
 
--- struct dpiAppContext {
---     const char *namespaceName;
---     uint32_t namespaceNameLength;
---     const char *name;
---     uint32_t nameLength;
---     const char *value;
---     uint32_t valueLength;
+-- struct dpiContextCreateParams {
+--     const char *defaultDriverName;
+--     const char *defaultEncoding;
+--     const char *loadErrorUrl;
+--     const char *oracleClientLibDir;
+--     const char *oracleClientConfigDir;
 -- };
 
 data DPIContextCreateParams
@@ -646,19 +611,6 @@ data DPIContextCreateParams
   } deriving (Show, Eq, Generic)
     deriving anyclass GStorable
 
--- struct dpiContextCreateParams {
---     const char *defaultDriverName;
---     const char *defaultEncoding;
---     const char *loadErrorUrl;
---     const char *oracleClientLibDir;
---     const char *oracleClientConfigDir;
--- };
-
- -- int dpiContext_initCommonCreateParams(const dpiContext *context,
- --        dpiCommonCreateParams *params);
- --
-
-
 foreign import ccall "dpiContext_getError"
   dpiContext_getError :: DPIContext -> Ptr ErrorInfo -> IO ()
 
@@ -668,8 +620,6 @@ getErrorInfo = do
   alloca $ \errorInfoPtr -> do
     dpiContext_getError ctx errorInfoPtr
     peek errorInfoPtr
--- dpiContext_getError(const dpiContext *context, dpiErrorInfo *errorInfo)
-
 
 foreign import ccall "dpiConn_prepareStmt"
   dpiConn_prepareStmt
@@ -693,13 +643,6 @@ prepareStmt conn sql = do
     status <- dpiConn_prepareStmt conn 0 sqlCStr sqlCStrLen nullPtr 0 stmtPtr
     throwOracleError status
     peek stmtPtr
-
-
--- // execute the statement and return the number of query columns
--- // zero implies the statement is not a query
-
--- DPI_EXPORT int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode,
---         uint32_t *numQueryColumns);
 
 -- typedef uint32_t dpiExecMode;
 
@@ -731,12 +674,16 @@ fromDPIModeExec _ = Nothing
 
 -- DPI_EXPORT int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode,
 --        uint32_t *numQueryColumns);
+
 foreign import ccall "dpiStmt_execute"
   dpiStmt_execute
     :: DPIStmt
     -> CUInt
     -> Ptr CUInt
     -> IO CInt
+
+-- DPI_EXPORT int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode,
+--         uint32_t *numQueryColumns);
 
 -- | Execute a statement.
 execute
@@ -751,6 +698,7 @@ execute stmt mode =
 
 -- DPI_EXPORT int dpiStmt_fetch(dpiStmt *stmt, int *found,
 --      uint32_t *bufferRowIndex);
+
 foreign import ccall "dpiStmt_fetch" dpiStmt_fetch
   :: DPIStmt
   -> Ptr CInt
@@ -771,6 +719,7 @@ fetch stmt =
 
 -- DPI_EXPORT int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
 --        dpiNativeTypeNum *nativeTypeNum, dpiData **data);
+
 foreign import ccall "dpiStmt_getQueryValue" dpiStmt_getQueryValue
   :: DPIStmt
   -> CUInt
@@ -878,13 +827,16 @@ newtype DPIDataBuffer = DPIDataBuffer (Ptr DPIDataBuffer)
   deriving newtype Storable
 
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
+
 foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr DPIData -> IO CDouble
 
 -- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
+
 foreign import ccall "dpiData_getBytes"
   dpiData_getBytes :: Ptr DPIData -> IO (Ptr DPIBytes)
 
 -- DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
+
 foreign import ccall "dpiData_getTimestamp"
   dpiData_getTimestamp :: Ptr DPIData -> IO (Ptr DPITimeStamp)
