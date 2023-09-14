@@ -17,8 +17,9 @@ let
   oracle-simple = hPkgs.callCabal2nix "oracle-simple" src { inherit (pkgs) odpic; };
 in
 {
-  pkg = appendConfigureFlags (disableCabalFlag oracle-simple "default_paths")
+  oracle-simple = appendConfigureFlags (disableCabalFlag oracle-simple "default_paths")
     [ "--extra-include-dirs=${pkgs.odpic}/include"
       "--extra-lib-dirs=${pkgs.odpic}/lib"
     ];
+  inherit pkgs;
 }
