@@ -1,5 +1,7 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Database.Oracle.Simple.FromRow where
 
 import Control.Monad
@@ -27,6 +29,27 @@ instance Monad RowParser where
     f' <- runRowParser f dpiStmt
     runRowParser (g f') dpiStmt
 
+-- | Retrieve the currently fetched row.
+getRow :: forall a. FromRow a => DPIStmt -> IO a
+getRow stmt = runRowParser fromRow stmt
+
+-- | Column position, starting with 1 for the first column.
+newtype Column = Column { getColumn :: Int }
+  deriving newtype (Num, Show)
+
+-- | Derive a @RowParser@ for a field at the specified column position.
+field :: FromField a => Column -> RowParser a
+field pos = fieldWith pos fromField
+
+-- | Derive a 'RowParser' for a field at the specified column position
+-- using the supplied 'FieldParser'.
+fieldWith :: Column -> FieldParser a -> RowParser a
+fieldWith pos FieldParser{..} = RowParser $ \dpiStmt -> do
+  (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getColumn pos)
+  unless (gotType == dpiNativeType) $
+    throwIO $ TypeMismatch dpiNativeType gotType pos
+  readDPIDataBuffer dataBuf
+
 data RowParseError
   = TypeMismatch
   -- ^ We encountered a type that we were not expecting.
@@ -34,22 +57,16 @@ data RowParseError
   -- ^ The DPI native type we were expecting
   , gotType :: DPINativeTypeNum
   -- ^ The DPI native type we got
-  , rowPosition :: Position
-  -- ^ Row position where type mismatch was encountered (1-indexed)
+  , column :: Column
+  -- ^ Column position where type mismatch was encountered (1-indexed)
   } deriving Show
 
-instance Exception RowParseError
-
-getRow :: forall a. FromRow a => DPIStmt -> IO a
-getRow stmt = runRowParser fromRow stmt
-
--- | Derive a @RowParser@ for a field at the specified position.
-field :: FromField a => Position -> RowParser a
-field pos = fieldWith pos fromField
-
-fieldWith :: Position -> FieldParser a -> RowParser a
-fieldWith pos FieldParser{..} = RowParser $ \dpiStmt -> do
-  (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getPosition pos)
-  unless (gotType == dpiNativeType) $
-    throwIO $ TypeMismatch dpiNativeType gotType pos
-  readDPIDataBuffer dataBuf
+instance Exception RowParseError where
+  displayException (TypeMismatch {..}) =
+    "Row parse error due to type mismatch: At column "
+    <> show column
+    <> ", expected "
+    <> show expectedType
+    <> " but got "
+    <> show gotType
+    <> "."

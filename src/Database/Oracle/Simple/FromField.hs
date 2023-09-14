@@ -14,7 +14,6 @@ import Data.Int
 -- | A type that may be parsed from a database field.
 class FromField a where
   fromField :: FieldParser a
-  -- ^ Blueprint for converting an SQL value to a Haskell value.
 
 instance Functor FieldParser where
   fmap f FieldParser{..} = FieldParser dpiNativeType (fmap f <$> readDPIDataBuffer)
@@ -40,7 +39,7 @@ data FieldParser a = FieldParser
   }
 
 -- | Alias for a function that retrieves a value of type @a@ from the DPI data buffer
-type ReadDPIBuffer a = Ptr Data -> IO a
+type ReadDPIBuffer a = Ptr DPIData -> IO a
 
 -- ** @ReadDPIBuffer@s for common types
 

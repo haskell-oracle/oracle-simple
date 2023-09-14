@@ -2,6 +2,7 @@
 {-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import Control.Monad
@@ -25,19 +26,23 @@ instance FromField RowCount where
 data ReturnedRow = ReturnedRow
   { count :: RowCount
   , sysdate :: DPITimeStamp
-  , message :: Text
+  , amount :: Double
   } deriving Show
 
 instance FromRow ReturnedRow where
-  fromRow =
-    ReturnedRow
-      <$> (field $ Position 1)
-      <*> (field $ Position 2)
-      <*> (field $ Position 3)
+  fromRow = do
+    count <- field (Column 1)
+    sysdate <- field (Column 2)
+    hint <- field @Text (Column 3)
+    amount <- if hint == "ignore next column"
+                then field (Column 5)
+                else field (Column 4)
+    pure $ ReturnedRow {..}
+
 
 foo :: IO ()
 foo = do
-  let stmtStr = "select count(*), sysdate, 'hello world' from dual"
+  let stmtStr = "select count(*), sysdate, 'ignore next column', 125.24, 3.14 from dual"
   putStrLn stmtStr
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   stmt <- prepareStmt conn stmtStr

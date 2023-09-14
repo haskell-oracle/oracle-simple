@@ -682,17 +682,6 @@ foreign import ccall "dpiConn_prepareStmt"
     -> Ptr DPIStmt
     -> IO CInt
 
--- foreign import ccall "dpiConn_execute"
---   dpiConn_prepareStmt
---     :: DPIStmt
---     -> DPIM
---     -> CString
---     -> CUInt
---     -> CString
---     -> CUInt
---     -> Ptr DPIStmt
---     -> IO CInt
-
 prepareStmt
   :: DPIConn
   -> String
@@ -701,11 +690,9 @@ prepareStmt
 prepareStmt conn sql = do
   alloca $ \stmtPtr -> do
     (sqlCStr, fromIntegral -> sqlCStrLen) <- newCStringLen sql
-    -- (tagCStr, fromIntegral -> tagCStrLen) <- newCStringLen tag
     status <- dpiConn_prepareStmt conn 0 sqlCStr sqlCStrLen nullPtr 0 stmtPtr
     throwOracleError status
     peek stmtPtr
-
 
 
 -- // execute the statement and return the number of query columns
@@ -742,6 +729,8 @@ fromDPIModeExec 0x00000100 = Just DPI_MODE_EXEC_PARSE_ONLY
 fromDPIModeExec 0x00100000 = Just DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS
 fromDPIModeExec _ = Nothing
 
+-- DPI_EXPORT int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode,
+--        uint32_t *numQueryColumns);
 foreign import ccall "dpiStmt_execute"
   dpiStmt_execute
     :: DPIStmt
@@ -749,9 +738,10 @@ foreign import ccall "dpiStmt_execute"
     -> Ptr CUInt
     -> IO CInt
 
+-- | Execute a statement.
 execute
-  :: DPIStmt
-  -> DPIModeExec
+  :: DPIStmt      -- ^ Statement to be executed
+  -> DPIModeExec  -- ^ Execution mode
   -> IO CUInt
   -- ^ query columns
 execute stmt mode =
@@ -759,14 +749,17 @@ execute stmt mode =
     throwOracleError =<< dpiStmt_execute stmt (toDPIModeExec mode) rowsPtr
     peek rowsPtr
 
+-- DPI_EXPORT int dpiStmt_fetch(dpiStmt *stmt, int *found,
+--      uint32_t *bufferRowIndex);
 foreign import ccall "dpiStmt_fetch" dpiStmt_fetch
   :: DPIStmt
   -> Ptr CInt
   -> Ptr CUInt
   -> IO CInt
 
+-- | Fetch a single row from the buffers defined for the query.
 fetch
-  :: DPIStmt
+  :: DPIStmt  -- ^ Statement from which row is to be fetched
   -> IO CInt
 fetch stmt =
   alloca $ \bufferRowIdxPtr ->
@@ -776,68 +769,30 @@ fetch stmt =
       print =<< peek bufferRowIdxPtr
       peek foundPtr
 
+-- DPI_EXPORT int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
+--        dpiNativeTypeNum *nativeTypeNum, dpiData **data);
 foreign import ccall "dpiStmt_getQueryValue" dpiStmt_getQueryValue
   :: DPIStmt
   -> CUInt
   -> Ptr CUInt
-  -> Ptr (Ptr Data)
+  -> Ptr (Ptr DPIData)
   -> IO CInt
 
--- UTCTime <->
-
+-- | Return the value of the column at the given position for the currently fetched row.
 getQueryValue
-  :: DPIStmt
-  -> CUInt -- pos
-  -> IO (DPINativeTypeNum, Ptr Data)
+  :: DPIStmt  -- ^ Statement from which column value is to be retrieved
+  -> CUInt    -- ^ Column position
+  -> IO (DPINativeTypeNum, Ptr DPIData)
 getQueryValue stmt pos = do
-  alloca $ \(buffer :: Ptr (Ptr Data)) -> do
+  alloca $ \(buffer :: Ptr (Ptr DPIData)) -> do
     alloca $ \(typ :: Ptr CUInt) -> do
-      throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer -- (**data)
+      throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer
       (toNativeTypeNum <$> peek typ) >>= \case
         Nothing ->
           error "getQueryValue: Invalid type returned"
         Just typ -> do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
-
-newtype Position = Position { getPosition :: Int }
-  deriving newtype (Num, Show)
-
-data Data
-  = Data
-  { dataIsNull :: CInt
-  , dataValue :: DataBuffer
-  } deriving stock (Generic, Show, Eq)
-    deriving anyclass GStorable
- {-
-data DataBuffer
-  = AsDouble CDouble
-  | AsTimestamp DPITimeStamp
-  | AsBytes DPIBytes
-  deriving stock (Generic, Show, Eq)
-  deriving anyclass GStorable -}
-
-newtype DataBuffer = DataBuffer (Ptr DataBuffer)
-  deriving (Show, Eq)
-  deriving newtype Storable
-
-
--- instance Storable Data where
---   sizeOf _ = 48
---   alignment _ = 48
---   peek = peekDefault
---   poke = pokeDefault
-
--- instance Storable DataBuffer where
---   sizeOf _ = 40
---   alignment _ = 40
---   peek = peekDefault
---   poke = pokeDefault
-
--- struct dpiData {
---     int isNull;
---     dpiDataBuffer value;
--- };
 
 data DPINativeTypeNum
   = DPI_NATIVE_TYPE_INT64
@@ -858,10 +813,6 @@ data DPINativeTypeNum
   | DPI_NATIVE_TYPE_JSON_ARRAY
   | DPI_NATIVE_TYPE_NULL
   deriving (Show, Eq)
-
--- DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
-foreign import ccall "dpiData_getTimestamp"
-  dpiData_getTimestamp :: Ptr Data -> IO (Ptr DPITimeStamp)
 
 fromNativeTypeNum :: DPINativeTypeNum -> CUInt
 fromNativeTypeNum DPI_NATIVE_TYPE_INT64                       = 3000
@@ -915,11 +866,25 @@ stmtRelease
   -> IO ()
 stmtRelease = throwOracleError <=< dpiStmt_release
 
+data DPIData
+  = DPIData
+  { dataIsNull :: CInt
+  , dataValue :: DPIDataBuffer
+  } deriving stock (Generic, Show, Eq)
+    deriving anyclass GStorable
+
+newtype DPIDataBuffer = DPIDataBuffer (Ptr DPIDataBuffer)
+  deriving (Show, Eq)
+  deriving newtype Storable
+
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 foreign import ccall "dpiData_getDouble"
-  dpiData_getDouble :: Ptr Data -> IO CDouble
-
+  dpiData_getDouble :: Ptr DPIData -> IO CDouble
 
 -- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
 foreign import ccall "dpiData_getBytes"
-  dpiData_getBytes :: Ptr Data -> IO (Ptr DPIBytes)
+  dpiData_getBytes :: Ptr DPIData -> IO (Ptr DPIBytes)
+
+-- DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
+foreign import ccall "dpiData_getTimestamp"
+  dpiData_getTimestamp :: Ptr DPIData -> IO (Ptr DPITimeStamp)
