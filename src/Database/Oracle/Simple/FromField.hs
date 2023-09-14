@@ -1,15 +1,16 @@
 {-# LANGUAGE RecordWildCards #-}
+
 module Database.Oracle.Simple.FromField where
 
-import Data.Coerce
-import Foreign.Storable.Generic
 import Control.Monad
-import Foreign.Ptr
+import Data.Coerce
+import Data.Int
+import Data.Text
+import Database.Oracle.Simple.Internal
 import Foreign.C.String
 import Foreign.C.Types
-import Database.Oracle.Simple.Internal
-import Data.Text
-import Data.Int
+import Foreign.Ptr
+import Foreign.Storable.Generic
 
 -- | A type that may be parsed from a database field.
 class FromField a where
@@ -34,7 +35,7 @@ instance FromField Int64 where
 data FieldParser a = FieldParser
   { dpiNativeType :: DPINativeTypeNum
   -- ^ The native DPI type for the field.
-  , readDPIDataBuffer  :: ReadDPIBuffer a
+  , readDPIDataBuffer :: ReadDPIBuffer a
   -- ^ A function that retrieves a value of type @a@ from the DPI data buffer.
   }
 

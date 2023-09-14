@@ -1,21 +1,23 @@
+{-# LANGUAGE BinaryLiterals #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DerivingStrategies #-}
-{-# LANGUAGE ViewPatterns       #-}
-{-# LANGUAGE RecordWildCards    #-}
-{-# LANGUAGE OverloadedStrings  #-}
-{-# LANGUAGE BinaryLiterals     #-}
+{-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE ViewPatterns #-}
+
 module Database.Oracle.Simple.Internal where
 
-import Data.Coerce
 import Control.Exception
 import Control.Monad
+import Data.Coerce
 import Data.IORef
+import Data.Text
 import Data.Typeable
 import Data.Word
 import Foreign
@@ -27,61 +29,60 @@ import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
 import System.IO.Unsafe
-import Data.Text
 
 newtype DPIStmt = DPIStmt (Ptr DPIStmt)
   deriving (Show, Eq)
-  deriving newtype Storable
+  deriving newtype (Storable)
 
 newtype DPIConn = DPIConn (Ptr DPIConn)
   deriving (Show, Eq)
-  deriving newtype Storable
+  deriving newtype (Storable)
 
 newtype Conn = Conn (ForeignPtr DPIConn)
   deriving (Show, Eq)
 
 newtype DPIPool = DPIPool (Ptr DPIPool)
   deriving (Show, Eq)
-  deriving newtype Storable
+  deriving newtype (Storable)
 
 newtype DPIContext = DPIContext (Ptr DPIContext)
   deriving (Show, Eq)
-  deriving newtype Storable
+  deriving newtype (Storable)
 
 newtype DPIShardingKeyColumn = DPIShardingKeyColumn (Ptr DPIShardingKeyColumn)
   deriving (Show, Eq)
-  deriving newtype Storable
+  deriving newtype (Storable)
 
-data ConnectionParams
-  = ConnectionParams
+data ConnectionParams = ConnectionParams
   { user :: String
   , pass :: String
   , connString :: String
-  } deriving (Eq, Ord, Show)
+  }
+  deriving (Eq, Ord, Show)
 
 createConn
   :: ConnectionParams
   -> IO DPIConn
 createConn params = do
-      ctx <- readIORef globalContext
-      alloca $ \connPtr -> do
-        (userCString, fromIntegral -> userLen) <- newCStringLen (user params)
-        (passCString, fromIntegral -> passLen) <- newCStringLen (pass params)
-        (connCString, fromIntegral -> connLen) <- newCStringLen (connString params)
-        throwOracleError =<<
-          dpiConn_create
-            ctx
-            userCString
-            userLen
-            passCString
-            passLen
-            connCString
-            connLen
-            nullPtr
-            nullPtr
-            connPtr
-        peek connPtr -- error "createConn: oh no" -- throwIO ConnectionException
-             -- TODO: fetch errorInfo struct... somehow?
+  ctx <- readIORef globalContext
+  alloca $ \connPtr -> do
+    (userCString, fromIntegral -> userLen) <- newCStringLen (user params)
+    (passCString, fromIntegral -> passLen) <- newCStringLen (pass params)
+    (connCString, fromIntegral -> connLen) <- newCStringLen (connString params)
+    throwOracleError
+      =<< dpiConn_create
+        ctx
+        userCString
+        userLen
+        passCString
+        passLen
+        connCString
+        connLen
+        nullPtr
+        nullPtr
+        connPtr
+    peek connPtr -- error "createConn: oh no" -- throwIO ConnectionException
+    -- TODO: fetch errorInfo struct... somehow?
 
 -- DPI_EXPORT int dpiConn_create(const dpiContext *context, const char *userName,
 --         uint32_t userNameLength, const char *password, uint32_t passwordLength,
@@ -116,26 +117,26 @@ foreign import ccall unsafe "dpiConn_create"
 -- | typedef uint32_t dpiAuthMode;
 data DPIAuthMode
   = DPI_MODE_AUTH_DEFAULT -- 0x00000000
-  | DPI_MODE_AUTH_SYSDBA  -- 0x00000002
+  | DPI_MODE_AUTH_SYSDBA -- 0x00000002
   | DPI_MODE_AUTH_SYSOPER -- 0x00000004
-  | DPI_MODE_AUTH_PRELIM  -- 0x00000008
-  | DPI_MODE_AUTH_SYSASM  -- 0x00008000
-  | DPI_MODE_AUTH_SYSBKP  -- 0x00020000
-  | DPI_MODE_AUTH_SYSDGD  -- 0x00040000
-  | DPI_MODE_AUTH_SYSKMT  -- 0x00080000
-  | DPI_MODE_AUTH_SYSRAC  -- 0x00100000
+  | DPI_MODE_AUTH_PRELIM -- 0x00000008
+  | DPI_MODE_AUTH_SYSASM -- 0x00008000
+  | DPI_MODE_AUTH_SYSBKP -- 0x00020000
+  | DPI_MODE_AUTH_SYSDGD -- 0x00040000
+  | DPI_MODE_AUTH_SYSKMT -- 0x00080000
+  | DPI_MODE_AUTH_SYSRAC -- 0x00100000
   deriving (Show, Eq)
 
 toDPIAuthMode :: DPIAuthMode -> CInt
 toDPIAuthMode DPI_MODE_AUTH_DEFAULT = 0x00000000
-toDPIAuthMode DPI_MODE_AUTH_SYSDBA =  0x00000002
+toDPIAuthMode DPI_MODE_AUTH_SYSDBA = 0x00000002
 toDPIAuthMode DPI_MODE_AUTH_SYSOPER = 0x00000004
-toDPIAuthMode DPI_MODE_AUTH_PRELIM =  0x00000008
-toDPIAuthMode DPI_MODE_AUTH_SYSASM =  0x00008000
-toDPIAuthMode DPI_MODE_AUTH_SYSBKP =  0x00020000
-toDPIAuthMode DPI_MODE_AUTH_SYSDGD =  0x00040000
-toDPIAuthMode DPI_MODE_AUTH_SYSKMT =  0x00080000
-toDPIAuthMode DPI_MODE_AUTH_SYSRAC =  0x00100000
+toDPIAuthMode DPI_MODE_AUTH_PRELIM = 0x00000008
+toDPIAuthMode DPI_MODE_AUTH_SYSASM = 0x00008000
+toDPIAuthMode DPI_MODE_AUTH_SYSBKP = 0x00020000
+toDPIAuthMode DPI_MODE_AUTH_SYSDGD = 0x00040000
+toDPIAuthMode DPI_MODE_AUTH_SYSKMT = 0x00080000
+toDPIAuthMode DPI_MODE_AUTH_SYSRAC = 0x00100000
 
 fromDPIAuthMode :: CInt -> Maybe DPIAuthMode
 fromDPIAuthMode 0x00000000 = Just DPI_MODE_AUTH_DEFAULT
@@ -210,32 +211,32 @@ fromDPIPurity _ = Nothing
 --     int outNewSession;
 -- };
 
-data DPIConnCreateParams
-  = DPIConnCreateParams
-  { authMode                   :: DPIAuthMode
-  , connectionClass            :: CString
-  , connectionClassLength      :: CUInt
-  , purity                     :: DPIPurity
-  , newPassword                :: CString
-  , newPasswordLength          :: CUInt
-  , appContenxt                :: DPIAppContext
-  , numAppContext              :: CUInt
-  , externalAuth               :: CInt
-  , externalHandle             :: Ptr ()
-  , pool                       :: DPIPool
-  , tag                        :: CString
-  , tagLength                  :: CUInt
-  , matchAnyTag                :: CInt
-  , outTag                     :: CString
-  , outTagLength               :: CUInt
-  , outTagFound                :: CInt
-  , shardingKeyColumn          :: DPIShardingKeyColumn
-  , numShardingKeyColumns      :: Word8
-  , superShardingKeyColumns    :: DPIShardingKeyColumn
+data DPIConnCreateParams = DPIConnCreateParams
+  { authMode :: DPIAuthMode
+  , connectionClass :: CString
+  , connectionClassLength :: CUInt
+  , purity :: DPIPurity
+  , newPassword :: CString
+  , newPasswordLength :: CUInt
+  , appContenxt :: DPIAppContext
+  , numAppContext :: CUInt
+  , externalAuth :: CInt
+  , externalHandle :: Ptr ()
+  , pool :: DPIPool
+  , tag :: CString
+  , tagLength :: CUInt
+  , matchAnyTag :: CInt
+  , outTag :: CString
+  , outTagLength :: CUInt
+  , outTagFound :: CInt
+  , shardingKeyColumn :: DPIShardingKeyColumn
+  , numShardingKeyColumns :: Word8
+  , superShardingKeyColumns :: DPIShardingKeyColumn
   , numSuperShardingKeyColumns :: Word8
-  , outNewSession              :: CInt
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  , outNewSession :: CInt
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 -- struct dpiCommonCreateParams {
 --     dpiCreateMode createMode;
@@ -249,19 +250,19 @@ data DPIConnCreateParams
 --     uint32_t stmtCacheSize;
 -- };
 
-data DPICommonCreateParams
-  = DPICommonCreateParams
-  { createMode        :: DPICreateMode
-  , encoding          :: CString
-  , nencoding         :: CString
-  , edition           :: CString
-  , editionLength     :: CInt
-  , driverName        :: CString
-  , driverNameLength  :: CInt
+data DPICommonCreateParams = DPICommonCreateParams
+  { createMode :: DPICreateMode
+  , encoding :: CString
+  , nencoding :: CString
+  , edition :: CString
+  , editionLength :: CInt
+  , driverName :: CString
+  , driverNameLength :: CInt
   , sodaMetadataCache :: Int
-  , stmtCacheSize     :: CInt
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  , stmtCacheSize :: CInt
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 -- | typedef uint32_t dpiCreateMode;
 data DPICreateMode
@@ -281,9 +282,9 @@ instance Storable DPICreateMode where
     poke (castPtr ptr) (toDPICreateMode mode)
 
 toDPICreateMode :: DPICreateMode -> CInt
-toDPICreateMode DPI_MODE_CREATE_DEFAULT  = 0x00000000
+toDPICreateMode DPI_MODE_CREATE_DEFAULT = 0x00000000
 toDPICreateMode DPI_MODE_CREATE_THREADED = 0x00000001
-toDPICreateMode DPI_MODE_CREATE_EVENTS   = 0x00000004
+toDPICreateMode DPI_MODE_CREATE_EVENTS = 0x00000004
 
 fromDPICreateMode :: CInt -> Maybe DPICreateMode
 fromDPICreateMode 0x00000000 = Just DPI_MODE_CREATE_DEFAULT
@@ -332,14 +333,13 @@ createContext = do
         else (throwIO <=< toOracleError <=< peek) errorInfoPtr
 
 renderErrorInfo :: ErrorInfo -> IO ()
-renderErrorInfo ErrorInfo { errorInfoCode, errorInfoMessage } = do
+renderErrorInfo ErrorInfo{errorInfoCode, errorInfoMessage} = do
   putStrLn $ "Error code: " <> show errorInfoCode
   unless (errorInfoMessage == nullPtr) $ do
     str <- peekCString errorInfoMessage
     putStrLn $ "Error msg: " <> str
 
-data ErrorInfo
-  = ErrorInfo
+data ErrorInfo = ErrorInfo
   { errorInfoCode :: CInt
   , errorInfoOffset16 :: Word16
   , errorInfoMessage :: CString
@@ -350,11 +350,11 @@ data ErrorInfo
   , errorInfoSqlState :: CString
   , errorInfoIsRecoverable :: CInt
   , errorInfoIsWarning :: CInt
-  } deriving (Show, Eq, Ord, Generic)
-    deriving anyclass GStorable
+  }
+  deriving (Show, Eq, Ord, Generic)
+  deriving anyclass (GStorable)
 
-data OracleError
-  = OracleError
+data OracleError = OracleError
   { oracleErrorFnName :: String
   -- ^ The public ODPI-C function name which was called in which the error took place.
   , oracleErrorAction :: String
@@ -364,17 +364,18 @@ data OracleError
   , oracleErrorSqlState :: String
   -- ^ The SQLSTATE associated with the error.
   , oracleErrorCode :: Int
-  -- , oracleErrorOffset16 :: Word16
-  -- , oracleErrorMessageLength :: Int
-  , oracleErrorIsRecoverable :: Bool
+  , -- , oracleErrorOffset16 :: Word16
+    -- , oracleErrorMessageLength :: Int
+    oracleErrorIsRecoverable :: Bool
   -- ^ A boolean value indicating if the error is recoverable.
   , oracleErrorIsWarning :: Bool
   -- ^ A boolean value indicating if the error information is for a warning returned
   -- by Oracle that does not prevent the request operation from proceeding.
-  } deriving (Show, Eq, Typeable)
+  }
+  deriving (Show, Eq, Typeable)
 
 toOracleError :: ErrorInfo -> IO OracleError
-toOracleError ErrorInfo {..} = do
+toOracleError ErrorInfo{..} = do
   oracleErrorFnName <- peekCString errorInfoFnName
   oracleErrorAction <- peekCString errorInfoAction
   oracleErrorMessage <- peekCStringLen (errorInfoMessage, fromIntegral errorInfoMessageLength)
@@ -382,10 +383,8 @@ toOracleError ErrorInfo {..} = do
   let oracleErrorCode = fromIntegral errorInfoCode
   let oracleErrorIsRecoverable = intToBool $ fromIntegral errorInfoIsRecoverable
   let oracleErrorIsWarning = intToBool $ fromIntegral errorInfoIsWarning
-  pure OracleError {..}
-
+  pure OracleError{..}
  where
-
   intToBool :: Int -> Bool
   intToBool 0 = False
   intToBool 1 = True
@@ -408,16 +407,16 @@ instance Exception OracleError
 --     uint32_t fullVersionNum;
 -- };
 
-data VersionInfo
-  = VersionInfo
+data VersionInfo = VersionInfo
   { versionNum :: CInt
   , releaseNum :: CInt
   , updateNum :: CInt
   , portReleaseNum :: CInt
   , portUpdateNum :: CInt
   , fullVersionNum :: CUInt
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 -- DPI_EXPORT int dpiContext_getClientVersion(const dpiContext *context,
 --         dpiVersionInfo *versionInfo);
@@ -468,9 +467,9 @@ getServerVersion con versionInfo = do
 
 foreign import ccall "dpiContext_initCommonCreateParams"
   dpiContext_initCommonCreateParams
-     :: DPIContext
-     -> Ptr DPICommonCreateParams
-     -> IO Int
+    :: DPIContext
+    -> Ptr DPICommonCreateParams
+    -> IO Int
 
 withCommonCreateParams
   :: (DPICommonCreateParams -> IO a)
@@ -488,9 +487,9 @@ withCommonCreateParams f = do
 
 foreign import ccall "dpiContext_initConnCreateParams"
   dpiContext_initConnCreateParams
-     :: DPIContext
-     -> Ptr DPIConnCreateParams
-     -> IO Int
+    :: DPIContext
+    -> Ptr DPIConnCreateParams
+    -> IO Int
 
 withConnCreateParams
   :: (DPIConnCreateParams -> IO a)
@@ -509,13 +508,13 @@ withConnCreateParams f = do
 --     const char *encoding;
 -- } dpiBytes;
 
-data DPIBytes
-  = DPIBytes
+data DPIBytes = DPIBytes
   { dpiBytesPtr :: CString
   , dpiBytesLength :: CUInt
   , dpiBytesEncoding :: CString
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 -- typedef struct {
 --     int32_t days;
@@ -525,27 +524,27 @@ data DPIBytes
 --     int32_t fseconds;
 -- } dpiIntervalDS;
 
-data DPIIntervalDS
-  = DPIIntervalDS
+data DPIIntervalDS = DPIIntervalDS
   { days :: CInt
   , hours :: CInt
   , minutes :: CInt
   , seconds :: CInt
   , fseconds :: CInt
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 -- typedef struct {
 --     int32_t years;
 --     int32_t months;
 -- } dpiIntervalYM;
 
-data DPIIntervalYM
-  = DPIIntervalYM
+data DPIIntervalYM = DPIIntervalYM
   { years :: CInt
   , months :: CInt
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 -- typedef struct {
 --     int16_t year;
@@ -559,8 +558,7 @@ data DPIIntervalYM
 --     int8_t tzMinuteOffset;
 -- } dpiTimestamp;
 
-data DPITimeStamp
-  = DPITimeStamp
+data DPITimeStamp = DPITimeStamp
   { year :: Int16
   , month :: Word8
   , day :: Word8
@@ -570,8 +568,9 @@ data DPITimeStamp
   , fsecond :: CUInt
   , tzHourOffset :: Int8
   , tzMinuteOffset :: Int8
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 -- struct dpiAppContext {
 --     const char *namespaceName;
@@ -582,16 +581,16 @@ data DPITimeStamp
 --     uint32_t valueLength;
 -- };
 
-data DPIAppContext
-  = DPIAppContext
+data DPIAppContext = DPIAppContext
   { namespaceName :: CString
   , namespaceNameLength :: CUInt
   , name :: CString
   , nameLength :: CUInt
   , value :: CString
   , valueLength :: CUInt
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 -- struct dpiContextCreateParams {
 --     const char *defaultDriverName;
@@ -601,15 +600,15 @@ data DPIAppContext
 --     const char *oracleClientConfigDir;
 -- };
 
-data DPIContextCreateParams
-  = DPIContextCreateParams
+data DPIContextCreateParams = DPIContextCreateParams
   { defaultDriverName :: CString
   , defaultEncoding :: CString
   , loadErrorUrl :: CString
   , oracleClientLibDir :: CString
   , oracleClientConfigDir :: CString
-  } deriving (Show, Eq, Generic)
-    deriving anyclass GStorable
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
 
 foreign import ccall "dpiContext_getError"
   dpiContext_getError :: DPIContext -> Ptr ErrorInfo -> IO ()
@@ -647,20 +646,20 @@ prepareStmt conn sql = do
 -- typedef uint32_t dpiExecMode;
 
 data DPIModeExec
-  = DPI_MODE_EXEC_DEFAULT                       -- 0x00000000
-  | DPI_MODE_EXEC_DESCRIBE_ONLY                 -- 0x00000010
-  | DPI_MODE_EXEC_COMMIT_ON_SUCCESS             -- 0x00000020
-  | DPI_MODE_EXEC_BATCH_ERRORS                  -- 0x00000080
-  | DPI_MODE_EXEC_PARSE_ONLY                    -- 0x00000100
-  | DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS           -- 0x00100000
+  = DPI_MODE_EXEC_DEFAULT -- 0x00000000
+  | DPI_MODE_EXEC_DESCRIBE_ONLY -- 0x00000010
+  | DPI_MODE_EXEC_COMMIT_ON_SUCCESS -- 0x00000020
+  | DPI_MODE_EXEC_BATCH_ERRORS -- 0x00000080
+  | DPI_MODE_EXEC_PARSE_ONLY -- 0x00000100
+  | DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS -- 0x00100000
   deriving (Show, Eq, Ord)
 
 toDPIModeExec :: DPIModeExec -> CUInt
-toDPIModeExec DPI_MODE_EXEC_DEFAULT             = 0x00000000
-toDPIModeExec DPI_MODE_EXEC_DESCRIBE_ONLY       = 0x00000010
-toDPIModeExec DPI_MODE_EXEC_COMMIT_ON_SUCCESS   = 0x00000020
-toDPIModeExec DPI_MODE_EXEC_BATCH_ERRORS        = 0x00000080
-toDPIModeExec DPI_MODE_EXEC_PARSE_ONLY          = 0x00000100
+toDPIModeExec DPI_MODE_EXEC_DEFAULT = 0x00000000
+toDPIModeExec DPI_MODE_EXEC_DESCRIBE_ONLY = 0x00000010
+toDPIModeExec DPI_MODE_EXEC_COMMIT_ON_SUCCESS = 0x00000020
+toDPIModeExec DPI_MODE_EXEC_BATCH_ERRORS = 0x00000080
+toDPIModeExec DPI_MODE_EXEC_PARSE_ONLY = 0x00000100
 toDPIModeExec DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS = 0x00100000
 
 fromDPIModeExec :: CUInt -> Maybe DPIModeExec
@@ -687,8 +686,10 @@ foreign import ccall "dpiStmt_execute"
 
 -- | Execute a statement.
 execute
-  :: DPIStmt      -- ^ Statement to be executed
-  -> DPIModeExec  -- ^ Execution mode
+  :: DPIStmt
+  -- ^ Statement to be executed
+  -> DPIModeExec
+  -- ^ Execution mode
   -> IO CUInt
   -- ^ query columns
 execute stmt mode =
@@ -699,15 +700,17 @@ execute stmt mode =
 -- DPI_EXPORT int dpiStmt_fetch(dpiStmt *stmt, int *found,
 --      uint32_t *bufferRowIndex);
 
-foreign import ccall "dpiStmt_fetch" dpiStmt_fetch
-  :: DPIStmt
-  -> Ptr CInt
-  -> Ptr CUInt
-  -> IO CInt
+foreign import ccall "dpiStmt_fetch"
+  dpiStmt_fetch
+    :: DPIStmt
+    -> Ptr CInt
+    -> Ptr CUInt
+    -> IO CInt
 
 -- | Fetch a single row from the buffers defined for the query.
 fetch
-  :: DPIStmt  -- ^ Statement from which row is to be fetched
+  :: DPIStmt
+  -- ^ Statement from which row is to be fetched
   -> IO CInt
 fetch stmt =
   alloca $ \bufferRowIdxPtr ->
@@ -720,17 +723,20 @@ fetch stmt =
 -- DPI_EXPORT int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
 --        dpiNativeTypeNum *nativeTypeNum, dpiData **data);
 
-foreign import ccall "dpiStmt_getQueryValue" dpiStmt_getQueryValue
-  :: DPIStmt
-  -> CUInt
-  -> Ptr CUInt
-  -> Ptr (Ptr DPIData)
-  -> IO CInt
+foreign import ccall "dpiStmt_getQueryValue"
+  dpiStmt_getQueryValue
+    :: DPIStmt
+    -> CUInt
+    -> Ptr CUInt
+    -> Ptr (Ptr DPIData)
+    -> IO CInt
 
 -- | Return the value of the column at the given position for the currently fetched row.
 getQueryValue
-  :: DPIStmt  -- ^ Statement from which column value is to be retrieved
-  -> CUInt    -- ^ Column position
+  :: DPIStmt
+  -- ^ Statement from which column value is to be retrieved
+  -> CUInt
+  -- ^ Column position
   -> IO (DPINativeTypeNum, Ptr DPIData)
 getQueryValue stmt pos = do
   alloca $ \(buffer :: Ptr (Ptr DPIData)) -> do
@@ -764,23 +770,23 @@ data DPINativeTypeNum
   deriving (Show, Eq)
 
 fromNativeTypeNum :: DPINativeTypeNum -> CUInt
-fromNativeTypeNum DPI_NATIVE_TYPE_INT64                       = 3000
-fromNativeTypeNum DPI_NATIVE_TYPE_UINT64                      = 3001
-fromNativeTypeNum DPI_NATIVE_TYPE_FLOAT                       = 3002
-fromNativeTypeNum DPI_NATIVE_TYPE_DOUBLE                      = 3003
-fromNativeTypeNum DPI_NATIVE_TYPE_BYTES                       = 3004
-fromNativeTypeNum DPI_NATIVE_TYPE_TIMESTAMP                   = 3005
-fromNativeTypeNum DPI_NATIVE_TYPE_INTERVAL_DS                 = 3006
-fromNativeTypeNum DPI_NATIVE_TYPE_INTERVAL_YM                 = 3007
-fromNativeTypeNum DPI_NATIVE_TYPE_LOB                         = 3008
-fromNativeTypeNum DPI_NATIVE_TYPE_OBJECT                      = 3009
-fromNativeTypeNum DPI_NATIVE_TYPE_STMT                        = 3010
-fromNativeTypeNum DPI_NATIVE_TYPE_BOOLEAN                     = 3011
-fromNativeTypeNum DPI_NATIVE_TYPE_ROWID                       = 3012
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON                        = 3013
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON_OBJECT                 = 3014
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON_ARRAY                  = 3015
-fromNativeTypeNum DPI_NATIVE_TYPE_NULL                        = 3016
+fromNativeTypeNum DPI_NATIVE_TYPE_INT64 = 3000
+fromNativeTypeNum DPI_NATIVE_TYPE_UINT64 = 3001
+fromNativeTypeNum DPI_NATIVE_TYPE_FLOAT = 3002
+fromNativeTypeNum DPI_NATIVE_TYPE_DOUBLE = 3003
+fromNativeTypeNum DPI_NATIVE_TYPE_BYTES = 3004
+fromNativeTypeNum DPI_NATIVE_TYPE_TIMESTAMP = 3005
+fromNativeTypeNum DPI_NATIVE_TYPE_INTERVAL_DS = 3006
+fromNativeTypeNum DPI_NATIVE_TYPE_INTERVAL_YM = 3007
+fromNativeTypeNum DPI_NATIVE_TYPE_LOB = 3008
+fromNativeTypeNum DPI_NATIVE_TYPE_OBJECT = 3009
+fromNativeTypeNum DPI_NATIVE_TYPE_STMT = 3010
+fromNativeTypeNum DPI_NATIVE_TYPE_BOOLEAN = 3011
+fromNativeTypeNum DPI_NATIVE_TYPE_ROWID = 3012
+fromNativeTypeNum DPI_NATIVE_TYPE_JSON = 3013
+fromNativeTypeNum DPI_NATIVE_TYPE_JSON_OBJECT = 3014
+fromNativeTypeNum DPI_NATIVE_TYPE_JSON_ARRAY = 3015
+fromNativeTypeNum DPI_NATIVE_TYPE_NULL = 3016
 
 toNativeTypeNum :: CUInt -> Maybe DPINativeTypeNum
 toNativeTypeNum 3000 = Just DPI_NATIVE_TYPE_INT64
@@ -815,16 +821,16 @@ stmtRelease
   -> IO ()
 stmtRelease = throwOracleError <=< dpiStmt_release
 
-data DPIData
-  = DPIData
+data DPIData = DPIData
   { dataIsNull :: CInt
   , dataValue :: DPIDataBuffer
-  } deriving stock (Generic, Show, Eq)
-    deriving anyclass GStorable
+  }
+  deriving stock (Generic, Show, Eq)
+  deriving anyclass (GStorable)
 
 newtype DPIDataBuffer = DPIDataBuffer (Ptr DPIDataBuffer)
   deriving (Show, Eq)
-  deriving newtype Storable
+  deriving newtype (Storable)
 
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 
