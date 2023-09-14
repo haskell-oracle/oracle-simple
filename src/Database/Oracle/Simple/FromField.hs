@@ -29,7 +29,7 @@ instance FromField Text where
   fromField = FieldParser DPI_NATIVE_TYPE_BYTES getText
 
 instance FromField Int64 where
-  fromField = FieldParser DPI_NATIVE_TYPE_DOUBLE getInt64
+  fromField = FieldParser DPI_NATIVE_TYPE_INT64 getInt64
 
 -- | Encapsulates all information needed to parse a field as a Haskell value.
 data FieldParser a = FieldParser
@@ -49,12 +49,8 @@ getDouble :: ReadDPIBuffer Double
 getDouble = coerce <$> dpiData_getDouble
 
 -- | Get an Int64 value from the data buffer.
--- All values that correspond to the NUMBER type in Oracle are stored as a
--- `double` value under the `asDouble` member of the `dpiData` union.
--- This will truncate any digits after the decimal. To ensure that there is no
--- loss of precision, this must only be used with NUMBERs that have a scale of 0.
 getInt64 :: ReadDPIBuffer Int64
-getInt64 = fmap floor . getDouble
+getInt64 = dpiData_getInt64
 
 -- | Get Text from the data buffer
 getText :: ReadDPIBuffer Text

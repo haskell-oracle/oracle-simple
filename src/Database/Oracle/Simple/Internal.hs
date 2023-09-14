@@ -392,7 +392,6 @@ toOracleError ErrorInfo{..} = do
 
 throwOracleError :: CInt -> IO ()
 throwOracleError returnCode = do
-  print (returnCode, " <- code" :: String)
   unless (returnCode == 0) $
     (throwIO =<< toOracleError =<< getErrorInfo)
 
@@ -716,8 +715,6 @@ fetch stmt =
   alloca $ \bufferRowIdxPtr ->
     alloca $ \foundPtr -> do
       throwOracleError =<< dpiStmt_fetch stmt foundPtr bufferRowIdxPtr
-      putStrLn "bufferRowIndxPtr"
-      print =<< peek bufferRowIdxPtr
       peek foundPtr
 
 -- DPI_EXPORT int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
@@ -846,3 +843,6 @@ foreign import ccall "dpiData_getBytes"
 
 foreign import ccall "dpiData_getTimestamp"
   dpiData_getTimestamp :: Ptr DPIData -> IO (Ptr DPITimeStamp)
+
+foreign import ccall "dpiData_getInt64"
+  dpiData_getInt64 :: Ptr DPIData -> IO Int64
