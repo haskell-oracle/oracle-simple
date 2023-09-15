@@ -24,7 +24,7 @@ instance FromField RowCount where
 data ReturnedRow = ReturnedRow
   { count :: RowCount
   , sysdate :: DPITimeStamp
-  , hint :: Text
+  , hint :: String
   , amount :: Double
   , piValue :: Double
   }

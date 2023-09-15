@@ -1,5 +1,7 @@
-{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RecordWildCards #-}
 module Database.Oracle.Simple.FromField where
 
 import GHC.Generics
@@ -28,6 +30,9 @@ instance FromField DPITimeStamp where
 
 instance FromField Text where
   fromField = FieldParser DPI_NATIVE_TYPE_BYTES getText
+
+instance FromField String where
+  fromField = FieldParser DPI_NATIVE_TYPE_BYTES getString
 
 instance FromField Int64 where
   fromField = FieldParser DPI_NATIVE_TYPE_INT64 getInt64
@@ -58,10 +63,14 @@ getInt64 = dpiData_getInt64
 
 -- | Get Text from the data buffer
 getText :: ReadDPIBuffer Text
-getText = buildString <=< peek <=< dpiData_getBytes
+getText = fmap pack <$> getString
+
+-- | Get String from the data buffer
+getString :: ReadDPIBuffer String
+getString = buildString <=< peek <=< dpiData_getBytes
  where
   buildString DPIBytes{..} =
-    pack <$> peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+    peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
 
 -- | Get a `DPITimeStamp` from the buffer
 getTimestamp :: ReadDPIBuffer DPITimeStamp
