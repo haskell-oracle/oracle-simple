@@ -1,3 +1,4 @@
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveAnyClass #-}
@@ -16,10 +17,8 @@ main = do
   mapM_ print rows
 
 newtype RowCount = RowCount { getRowCount :: Double }
-  deriving (Show)
-
-instance FromField RowCount where
-  fromField = RowCount <$> fromField
+  deriving stock (Show)
+  deriving newtype (FromField)
 
 data ReturnedRow = ReturnedRow
   { count :: RowCount

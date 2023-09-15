@@ -1,14 +1,15 @@
-{-# LANGUAGE DataKinds #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE TypeApplications           #-}
+{-# LANGUAGE DataKinds                  #-}
+{-# LANGUAGE TypeOperators              #-}
+{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE TypeSynonymInstances       #-}
+{-# LANGUAGE FlexibleContexts           #-}
+{-# LANGUAGE ScopedTypeVariables        #-}
+{-# LANGUAGE DerivingStrategies         #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE RankNTypes                 #-}
+{-# LANGUAGE RecordWildCards            #-}
+{-# LANGUAGE DefaultSignatures          #-}
 module Database.Oracle.Simple.FromRow where
 
 import Control.Monad.State
@@ -18,6 +19,7 @@ import Database.Oracle.Simple.FromField
 import Database.Oracle.Simple.Internal
 import GHC.Generics
 import GHC.TypeLits
+import Data.Proxy
 
 class FromRow a where
   fromRow :: RowParser a
@@ -76,14 +78,15 @@ field = fieldWith fromField
 
 -- | Derive a 'RowParser' for a field at the specified column position
 -- using the supplied 'FieldParser'.
-fieldWith :: FieldParser a -> RowParser a
+fieldWith :: forall a . FromField a => FieldParser a -> RowParser a
 fieldWith FieldParser{..} = RowParser $ \dpiStmt -> do
   pos <- modify (+1) >> get
   liftIO $ do
     (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral pos)
-    unless (gotType == dpiNativeType) $
+    let typ = fieldType (Proxy @a)
+    unless (gotType == typ) $
       throwIO $
-        TypeMismatch dpiNativeType gotType (Column pos)
+        TypeMismatch typ gotType (Column pos)
     readDPIDataBuffer dataBuf
 
 data RowParseError

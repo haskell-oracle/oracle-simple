@@ -25,7 +25,9 @@ main = do
 
 -- [ ReturnedRow { count = RowCount {getRowCount = 1.0}
 --               , sysdate = DPITimeStamp {year = 2023, month = 9, day = 15, hour = 2, minute = 10, second = 50, fsecond = 0, tzHourOffset = 0, tzMinuteOffset = 0}
---               , hint = "ignore next column", amount = 125.24000000000001, piValue = 3.14
+--               , hint = "ignore next column"
+--               , amount = 125.24000000000001
+--               , piValue = 3.14
 --               }
 -- ]
 
