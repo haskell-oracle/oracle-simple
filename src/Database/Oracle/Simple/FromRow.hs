@@ -12,7 +12,7 @@
 {-# LANGUAGE DefaultSignatures          #-}
 module Database.Oracle.Simple.FromRow where
 
-import Control.Monad.State
+import Control.Monad.State.Strict
 import Control.Exception hiding (TypeError)
 import Control.Monad
 import Database.Oracle.Simple.FromField
