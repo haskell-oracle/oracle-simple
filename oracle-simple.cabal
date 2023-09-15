@@ -3,11 +3,11 @@ name:                oracle-simple
 version:             0.1.0.0
 synopsis:            Easy access to Oracle
 description:         Query Oracle databases using odpic
-bug-reports:         https://github.com/heb/oracle-simple
+bug-reports:         https://github.com/haskell-oracle/oracle-simple
 license:             MIT
 license-file:        LICENSE
 author:              David Johnson
-maintainer:          johnson.david@heb.com, reynolds.william@heb.com
+maintainer:          djohnson.m@gmail.com, khandkararjun@gmail.com
 copyright:           H-E-B (c) 2021
 category:            Database
 build-type:          Simple
@@ -61,4 +61,4 @@ library
 
 source-repository head
   type: git
-  location: git://github.com/heb/oracle-simple.git
+  location: git://github.com/haskell-oracle/oracle-simple.git
