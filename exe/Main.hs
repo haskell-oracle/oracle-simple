@@ -11,7 +11,7 @@ import GHC.Generics (Generic)
 
 main :: IO ()
 main = do
-  let stmt = "select count(*), sysdate, 'ignore next column', 125.24, 3.14 from dual"
+  let stmt = "select count(*), sysdate, 'ignore next column', 125.24, 3.14, null from dual"
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   rows <- query @ReturnedRow conn (stmt <> " UNION ALL " <> stmt)
   mapM_ print rows
@@ -26,6 +26,7 @@ data ReturnedRow = ReturnedRow
   , hint :: String
   , amount :: Double
   , piValue :: Double
+  , nullValue :: Maybe Double
   }
   deriving stock (Show, Generic)
   deriving anyclass FromRow
