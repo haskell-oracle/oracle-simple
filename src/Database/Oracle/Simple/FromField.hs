@@ -30,7 +30,11 @@ instance Functor FieldParser where
 
 instance FromField Double where
   fieldType Proxy = DPI_NATIVE_TYPE_DOUBLE
-  fromField = FieldParser  getDouble
+  fromField = FieldParser getDouble
+
+instance FromField Float where
+  fieldType Proxy = DPI_NATIVE_TYPE_FLOAT
+  fromField = FieldParser getFloat
 
 instance FromField DPITimeStamp where
   fieldType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
@@ -103,6 +107,10 @@ type ReadDPIBuffer a = Ptr DPIData -> IO a
 -- | Get a Double value from the data buffer
 getDouble :: ReadDPIBuffer Double
 getDouble = coerce <$> dpiData_getDouble
+
+-- | Get a Float value from the data buffer
+getFloat :: ReadDPIBuffer Float
+getFloat = coerce <$> dpiData_getFloat
 
 -- | Get an Int64 value from the data buffer.
 getInt64 :: ReadDPIBuffer Int64

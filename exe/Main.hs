@@ -11,7 +11,7 @@ import GHC.Generics (Generic)
 
 main :: IO ()
 main = do
-  let stmt = "select count(*), sysdate, 'hello there', CAST(2023 AS NUMBER(10,0)), CAST(null AS NUMBER(10,2)) from dual"
+  let stmt = "select count(*), sysdate, 'text goes here', 125.24, TO_BINARY_FLOAT ('3.14'), CAST(null AS NUMBER(10,2)) from dual"
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   rows <- query @ReturnedRow conn (stmt <> " UNION ALL " <> stmt)
   mapM_ print rows
@@ -24,7 +24,8 @@ data ReturnedRow = ReturnedRow
   { count :: RowCount
   , sysdate :: DPITimeStamp
   , message :: Maybe String
-  , intValue :: Int
+  , amount :: Double
+  , piValue :: Float
   , nullValue :: Maybe Double
   }
   deriving stock (Show, Generic)

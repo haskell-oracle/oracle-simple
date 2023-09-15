@@ -832,7 +832,10 @@ newtype DPIDataBuffer = DPIDataBuffer (Ptr DPIDataBuffer)
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 
 foreign import ccall "dpiData_getDouble"
-  dpiData_getDouble :: Ptr DPIData -> IO CDouble
+  dpiData_getDouble :: Ptr DPIData -> IO Double
+
+foreign import ccall "dpiData_getFloat"
+  dpiData_getFloat :: Ptr DPIData -> IO Float
 
 -- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
 
