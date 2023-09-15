@@ -12,8 +12,8 @@ main :: IO ()
 main = do
   let stmt = "select count(*), sysdate, 'ignore next column', 125.24, 3.14 from dual"
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
-  rows <- query @ReturnedRow conn stmt
-  print rows
+  rows <- query @ReturnedRow conn (stmt <> " UNION ALL " <> stmt)
+  mapM_ print rows
 
 newtype RowCount = RowCount { getRowCount :: Double }
   deriving (Show)
