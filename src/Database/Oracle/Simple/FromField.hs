@@ -61,7 +61,7 @@ instance FromField Int where
   fromField = fromIntegral <$> fromField @Int64
 
 instance FromField a => FromField (Maybe a) where
-  fieldType Proxy = fieldType (Proxy @Double)
+  fieldType Proxy = fieldType (Proxy @a)
   fromField = FieldParser $ \ptr -> do
     result <- dpiData_getIsNull ptr
     if result == 1
