@@ -1,7 +1,8 @@
 {-# LANGUAGE RecordWildCards #-}
-
+{-# LANGUAGE TypeApplications #-}
 module Database.Oracle.Simple.FromField where
 
+import GHC.Generics
 import Control.Monad
 import Data.Coerce
 import Data.Int
@@ -30,6 +31,9 @@ instance FromField Text where
 
 instance FromField Int64 where
   fromField = FieldParser DPI_NATIVE_TYPE_INT64 getInt64
+
+instance FromField Int where
+  fromField = fromIntegral <$> fromField @Int64
 
 -- | Encapsulates all information needed to parse a field as a Haskell value.
 data FieldParser a = FieldParser

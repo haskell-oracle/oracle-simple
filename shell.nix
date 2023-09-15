@@ -15,5 +15,10 @@ in
       function clean () {
          cabal clean
       }
+      function ghcid () {
+         ${pkgs.ghcid}/bin/ghcid --poll -c 'cabal configure \
+      	   --extra-lib-dirs=${pkgs.odpic}/lib \
+      	   --extra-include-dirs=${pkgs.odpic}/include && cabal repl'
+      }
     '';
   })
