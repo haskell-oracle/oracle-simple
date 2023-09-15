@@ -850,8 +850,8 @@ foreign import ccall "dpiData_getTimestamp"
 foreign import ccall "dpiData_getInt64"
   dpiData_getInt64 :: Ptr DPIData -> IO Int64
 
-foreign import ccall "dpiData_getUInt64"
-  dpiData_getUInt64 :: Ptr DPIData -> IO Word64
+foreign import ccall "dpiData_getUint64"
+  dpiData_getUint64 :: Ptr DPIData -> IO Word64
 
 foreign import ccall "dpiData_getBool"
   dpiData_getBool :: Ptr DPIData -> IO Int

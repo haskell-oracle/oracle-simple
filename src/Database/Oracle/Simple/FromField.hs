@@ -118,7 +118,7 @@ getInt64 = dpiData_getInt64
 
 -- | Get a Word64 value from the data buffer.
 getWord64 :: ReadDPIBuffer Word64
-getWord64 = dpiData_getUInt64
+getWord64 = dpiData_getUint64
 
 -- | Get an Int64 value from the data buffer.
 getBool :: ReadDPIBuffer Bool
