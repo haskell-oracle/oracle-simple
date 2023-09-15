@@ -1,3 +1,4 @@
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE TypeSynonymInstances #-}
@@ -58,6 +59,14 @@ instance FromField Bool where
 instance FromField Int where
   fieldType Proxy = fieldType (Proxy @Int64)
   fromField = fromIntegral <$> fromField @Int64
+
+instance FromField a => FromField (Maybe a) where
+  fieldType Proxy = fieldType (Proxy @a)
+  fromField = FieldParser $ \ptr -> do
+    result <- dpiData_getIsNull ptr
+    if result == 1
+      then pure Nothing
+      else Just <$> readDPIDataBuffer (fromField @a) ptr
 
 -- instance FromField UTCTime where
 --   fieldType Proxy = fieldType (Proxy @DPITimeStamp)

@@ -852,3 +852,7 @@ foreign import ccall "dpiData_getUInt64"
 
 foreign import ccall "dpiData_getBool"
   dpiData_getBool :: Ptr DPIData -> IO Int
+
+foreign import ccall "dpiData_getIsNull"
+  dpiData_getIsNull :: Ptr DPIData -> IO Int
+
