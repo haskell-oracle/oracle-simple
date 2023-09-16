@@ -515,6 +515,12 @@ data DPIBytes = DPIBytes
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+mkDPIBytesUTF8 :: String -> IO DPIBytes
+mkDPIBytesUTF8 str = do
+  (dpiBytesPtr, fromIntegral -> dpiBytesLength) <- newCStringLen str
+  dpiBytesEncoding <- newCString "UTF-8"
+  pure $ DPIBytes {..}
+
 -- typedef struct {
 --     int32_t days;
 --     int32_t hours;
@@ -825,9 +831,31 @@ data DPIData = DPIData
   deriving stock (Generic, Show, Eq)
   deriving anyclass (GStorable)
 
-newtype DPIDataBuffer = DPIDataBuffer (Ptr DPIDataBuffer)
-  deriving (Show, Eq)
-  deriving newtype (Storable)
+data DPIDataBuffer =
+  AsBoolean Int
+  | AsInt64 Int64
+  | AsUInt64 Word64
+  | AsFloat Float
+  | AsDouble Double
+  | AsString CString
+  | AsBytes DPIBytes
+  | AsTimestamp DPITimeStamp
+  deriving (Show, Eq, Generic)
+
+instance Storable DPIDataBuffer where
+  sizeOf _ = sizeOf (undefined :: DPITimeStamp)
+  alignment _ = 8
+  peek = undefined "don't peek in here!" -- TODO broken type, split into another type for peeking during queries
+
+  poke ptr (AsInt64 intVal) = poke (castPtr ptr) intVal
+  poke ptr (AsUInt64 word64Val) = poke (castPtr ptr) word64Val
+  poke ptr (AsFloat floatVal) = poke (castPtr ptr) floatVal
+  poke ptr (AsDouble doubleVal) = poke (castPtr ptr) doubleVal
+  poke ptr (AsString cStringVal) = poke (castPtr ptr) cStringVal
+  poke ptr (AsBytes dpiBytesVal) = poke (castPtr ptr) dpiBytesVal
+  poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
+
+--instance GStorable DPIDataBuffer
 
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 
@@ -859,3 +887,29 @@ foreign import ccall "dpiData_getBool"
 foreign import ccall "dpiData_getIsNull"
   dpiData_getIsNull :: Ptr DPIData -> IO Int
 
+-- DPI_EXPORT int dpiStmt_bindValueByPos(dpiStmt *stmt, uint32_t pos,
+--         dpiNativeTypeNum nativeTypeNum, dpiData *data);
+
+foreign import ccall "dpiStmt_bindValueByPos"
+  dpiStmt_bindValueByPos
+    :: DPIStmt
+    -- ^ dpiStmt *stmt
+    -> CUInt
+    -- ^ uint32_t pos
+    -> CUInt
+    -- ^ dpiNativeTypeNum nativeTypeNum
+    -> Ptr DPIData
+    -- ^ dpiData *data
+    -> IO CInt
+    -- ^ int
+
+bindValueByPos :: DPIStmt -> Column -> DPINativeTypeNum -> DPIData -> IO ()
+bindValueByPos stmt col nativeType val = do
+  alloca $ \dpiData' -> do
+    poke dpiData' val
+    throwOracleError =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (fromNativeTypeNum nativeType) dpiData'
+    pure ()
+
+-- | Column position, starting with 1 for the first column.
+newtype Column = Column {getColumn :: Word32}
+  deriving newtype (Num, Show)

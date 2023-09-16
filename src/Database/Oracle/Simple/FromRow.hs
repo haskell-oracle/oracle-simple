@@ -12,6 +12,7 @@
 {-# LANGUAGE DefaultSignatures          #-}
 module Database.Oracle.Simple.FromRow where
 
+import Data.Word
 import Control.Monad.State.Strict
 import Control.Exception hiding (TypeError)
 import Control.Monad
@@ -47,7 +48,7 @@ instance TypeError ('Text "Sum types not supported") => GFromRow (l :+: r) where
 instance FromField a => GFromRow (K1 i a) where
   gFromRow = K1 <$> field
 
-newtype RowParser a = RowParser { runRowParser :: DPIStmt -> StateT Int IO a }
+newtype RowParser a = RowParser { runRowParser :: DPIStmt -> StateT Word32 IO a }
 
 instance Functor RowParser where
   fmap f g = RowParser $ \dpiStmt -> f <$> runRowParser g dpiStmt
@@ -67,10 +68,6 @@ instance Monad RowParser where
 -- | Retrieve the currently fetched row.
 getRow :: forall a. (FromRow a) => DPIStmt -> IO a
 getRow stmt = evalStateT (runRowParser fromRow stmt) 0
-
--- | Column position, starting with 1 for the first column.
-newtype Column = Column {getColumn :: Int}
-  deriving newtype (Num, Show)
 
 -- | Derive a @RowParser@ for a field at the specified column position.
 field :: (FromField a) => RowParser a
