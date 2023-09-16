@@ -731,7 +731,7 @@ foreign import ccall "dpiStmt_getQueryValue"
     :: DPIStmt
     -> CUInt
     -> Ptr CUInt
-    -> Ptr (Ptr DPIData)
+    -> Ptr (Ptr (DPIData ReadBuffer))
     -> IO CInt
 
 -- | Return the value of the column at the given position for the currently fetched row.
@@ -740,9 +740,9 @@ getQueryValue
   -- ^ Statement from which column value is to be retrieved
   -> CUInt
   -- ^ Column position
-  -> IO (DPINativeTypeNum, Ptr DPIData)
+  -> IO (DPINativeTypeNum, Ptr (DPIData ReadBuffer))
 getQueryValue stmt pos = do
-  alloca $ \(buffer :: Ptr (Ptr DPIData)) -> do
+  alloca $ \(buffer :: Ptr (Ptr (DPIData ReadBuffer))) -> do
     alloca $ \(typ :: Ptr CUInt) -> do
       throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer
       (toNativeTypeNum <$> peek typ) >>= \case
@@ -824,14 +824,26 @@ stmtRelease
   -> IO ()
 stmtRelease = throwOracleError <=< dpiStmt_release
 
-data DPIData = DPIData
+-- | Used to write values to or read values from a column.
+data DPIData a = DPIData
   { dataIsNull :: CInt
-  , dataValue :: DPIDataBuffer
+  -- ^ If reading, a null value was read. If writing, writes a null value.
+  , dataValue :: a
+  -- ^ The value that was read/will be written, of type 'ReadBuffer' or 'WriteBuffer'.
   }
   deriving stock (Generic, Show, Eq)
   deriving anyclass (GStorable)
 
-data DPIDataBuffer =
+-- | An opaque pointer type for the @dpiDataBuffer@ union that we read from.
+-- We cannot write to this in a way that ODPIC could use.
+-- For poking purposes, use 'WriteBuffer'.
+newtype ReadBuffer = ReadBuffer (Ptr ReadBuffer)
+  deriving (Show, Eq)
+  deriving newtype Storable
+
+-- | @dpiDataBuffer@ union that we can write to.
+-- We cannot read from this without a hint as to what type of data it contains.
+data WriteBuffer =
   AsBoolean Int
   | AsInt64 Int64
   | AsUInt64 Word64
@@ -842,10 +854,10 @@ data DPIDataBuffer =
   | AsTimestamp DPITimeStamp
   deriving (Show, Eq, Generic)
 
-instance Storable DPIDataBuffer where
-  sizeOf _ = sizeOf (undefined :: DPITimeStamp)
+instance Storable WriteBuffer where
+  sizeOf _ = sizeOf (undefined :: DPITimeStamp) -- size of largest element
   alignment _ = 8
-  peek = undefined "don't peek in here!" -- TODO broken type, split into another type for peeking during queries
+  peek = error "WriteBuffer says: don't peek in here!" -- handle this better!
 
   poke ptr (AsInt64 intVal) = poke (castPtr ptr) intVal
   poke ptr (AsUInt64 word64Val) = poke (castPtr ptr) word64Val
@@ -860,32 +872,32 @@ instance Storable DPIDataBuffer where
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 
 foreign import ccall "dpiData_getDouble"
-  dpiData_getDouble :: Ptr DPIData -> IO Double
+  dpiData_getDouble :: Ptr (DPIData ReadBuffer) -> IO Double
 
 foreign import ccall "dpiData_getFloat"
-  dpiData_getFloat :: Ptr DPIData -> IO Float
+  dpiData_getFloat :: Ptr (DPIData ReadBuffer) -> IO Float
 
 -- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
 
 foreign import ccall "dpiData_getBytes"
-  dpiData_getBytes :: Ptr DPIData -> IO (Ptr DPIBytes)
+  dpiData_getBytes :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPIBytes)
 
 -- DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
 
 foreign import ccall "dpiData_getTimestamp"
-  dpiData_getTimestamp :: Ptr DPIData -> IO (Ptr DPITimeStamp)
+  dpiData_getTimestamp :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPITimeStamp)
 
 foreign import ccall "dpiData_getInt64"
-  dpiData_getInt64 :: Ptr DPIData -> IO Int64
+  dpiData_getInt64 :: Ptr (DPIData ReadBuffer) -> IO Int64
 
 foreign import ccall "dpiData_getUint64"
-  dpiData_getUint64 :: Ptr DPIData -> IO Word64
+  dpiData_getUint64 :: Ptr (DPIData ReadBuffer) -> IO Word64
 
 foreign import ccall "dpiData_getBool"
-  dpiData_getBool :: Ptr DPIData -> IO Int
+  dpiData_getBool :: Ptr (DPIData ReadBuffer) -> IO Int
 
 foreign import ccall "dpiData_getIsNull"
-  dpiData_getIsNull :: Ptr DPIData -> IO Int
+  dpiData_getIsNull :: Ptr (DPIData ReadBuffer) -> IO Int
 
 -- DPI_EXPORT int dpiStmt_bindValueByPos(dpiStmt *stmt, uint32_t pos,
 --         dpiNativeTypeNum nativeTypeNum, dpiData *data);
@@ -898,12 +910,12 @@ foreign import ccall "dpiStmt_bindValueByPos"
     -- ^ uint32_t pos
     -> CUInt
     -- ^ dpiNativeTypeNum nativeTypeNum
-    -> Ptr DPIData
+    -> Ptr (DPIData WriteBuffer)
     -- ^ dpiData *data
     -> IO CInt
     -- ^ int
 
-bindValueByPos :: DPIStmt -> Column -> DPINativeTypeNum -> DPIData -> IO ()
+bindValueByPos :: DPIStmt -> Column -> DPINativeTypeNum -> (DPIData WriteBuffer) -> IO ()
 bindValueByPos stmt col nativeType val = do
   alloca $ \dpiData' -> do
     poke dpiData' val

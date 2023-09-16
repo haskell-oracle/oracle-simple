@@ -11,12 +11,15 @@ import GHC.Generics (Generic)
 
 main :: IO ()
 main = do
-  insertTest
-  {-
+  putStrLn "test query"
+
   let stmt = "select count(*), sysdate, 'text goes here', 125.24, TO_BINARY_FLOAT ('3.14'), CAST(null AS NUMBER(10,2)) from dual"
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   rows <- query @ReturnedRow conn (stmt <> " UNION ALL " <> stmt)
-  mapM_ print rows -}
+  mapM_ print rows
+
+  putStrLn "\ntest insert"
+  insertTest
 
 -- CREATE TABLE bank_user (
 --	user_id VARCHAR(20) PRIMARY KEY,

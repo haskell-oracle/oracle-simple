@@ -100,7 +100,7 @@ instance Monad FieldParser where
     readDPIDataBuffer (f x) ptr
 
 -- | Alias for a function that retrieves a value of type @a@ from the DPI data buffer
-type ReadDPIBuffer a = Ptr DPIData -> IO a
+type ReadDPIBuffer a = Ptr (DPIData ReadBuffer) -> IO a
 
 -- ** @ReadDPIBuffer@s for common types
 
