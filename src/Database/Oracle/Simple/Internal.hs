@@ -14,9 +14,14 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
 
 module Database.Oracle.Simple.Internal where
 
+import GHC.TypeLits
+import GHC.Generics
 import Control.Monad.State.Strict
 import Control.Exception
 import Control.Monad
@@ -857,6 +862,7 @@ data WriteBuffer =
   | AsString CString
   | AsBytes DPIBytes
   | AsTimestamp DPITimeStamp
+  | AsNull (Ptr ())
   deriving (Show, Eq, Generic)
 
 instance Storable WriteBuffer where
@@ -871,6 +877,7 @@ instance Storable WriteBuffer where
   poke ptr (AsString cStringVal) = poke (castPtr ptr) cStringVal
   poke ptr (AsBytes dpiBytesVal) = poke (castPtr ptr) dpiBytesVal
   poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
+  poke ptr (AsNull nullVal) = poke (castPtr ptr) nullVal
 
 --instance GStorable DPIDataBuffer
 
@@ -937,7 +944,7 @@ class ToField a where
   toField :: a -> IO WriteBuffer
 
 
-newtype RowWriter a = RowWriter { runRowWriter :: DPIStmt -> StateT Word32 IO a }
+newtype RowWriter a = RowWriter { runRowWriter :: DPIStmt -> StateT Column IO a }
 
 instance Functor RowWriter where
   fmap f g = RowWriter $ \dpiStmt -> f <$> runRowWriter g dpiStmt
@@ -965,13 +972,20 @@ instance ToField Double where
 class ToRow a where
   toRow :: a -> RowWriter a
 
+instance ToField a => ToField (Maybe a) where
+  tfFieldType _ = tfFieldType (Proxy @a)
+  toField (Just val) = toField val
+  toField Nothing = pure $ AsNull nullPtr
 
 row :: forall a. ToField a => a -> RowWriter a
 row field = RowWriter $ \stmt -> do
     col <- modify (+1) >> get
     liftIO $ do
-      fieldValue <- DPIData 0 <$> toField field
-      bindValueByPos stmt (Column col) (tfFieldType (Proxy @a)) fieldValue
+      dataValue <- toField field
+      let dataIsNull = case dataValue of
+            (AsNull _) -> 1
+            _ -> 0
+      bindValueByPos stmt col (tfFieldType (Proxy @a)) (DPIData {..})
     pure field
 
 data BankUser =
@@ -979,11 +993,11 @@ data BankUser =
   { userId :: String
   , userName :: String
   , userBalance :: Double
-  , userEmail :: String
+  , userEmail :: Maybe String
   } deriving Show
 
 instance ToRow BankUser where
   toRow BankUser{..} = BankUser <$> (row userId) <*> (row userName) <*> (row userBalance) <*> (row userEmail)
 
 autoBind :: ToRow a => DPIStmt -> a -> IO a
-autoBind stmt row = evalStateT (runRowWriter (toRow row) stmt) 0
+autoBind stmt row = evalStateT (runRowWriter (toRow row) stmt) (Column 0)

@@ -34,7 +34,7 @@ insertTest = do
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   stmt <- prepareStmt conn sql
 
-  autoBind stmt (BankUser "d001" "Jane Doe" 9920.5 "peter@gmail.com")
+  autoBind stmt (BankUser "d001" "Jane Doe" 9920.5 Nothing)
   execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 
   {-
