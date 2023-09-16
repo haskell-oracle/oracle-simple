@@ -33,6 +33,11 @@ insertTest = do
   let sql = "insert into bank_user values (:1, :2, :3, :4)"
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   stmt <- prepareStmt conn sql
+
+  autoBind stmt (BankUser "d001" "Jane Doe" 9920.5 "peter@gmail.com")
+  execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+
+  {-
   idVal' <- mkDPIBytesUTF8 "d001"
   let idVal = DPIData 0 (AsBytes idVal')
   nameVal' <- mkDPIBytesUTF8 "Jane Doe"
@@ -44,7 +49,7 @@ insertTest = do
   bindValueByPos stmt (Column 2) DPI_NATIVE_TYPE_BYTES nameVal
   bindValueByPos stmt (Column 3) DPI_NATIVE_TYPE_DOUBLE balanceVal
   bindValueByPos stmt (Column 4) DPI_NATIVE_TYPE_BYTES emailVal
-  execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS -- TODO use default and then commit explicitly
+  execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS -- TODO use default and then commit explicitly -}
   pure ()
 
 

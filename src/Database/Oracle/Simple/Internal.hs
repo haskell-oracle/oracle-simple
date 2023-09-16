@@ -10,9 +10,14 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Database.Oracle.Simple.Internal where
 
+import Control.Monad.State.Strict
 import Control.Exception
 import Control.Monad
 import Data.Coerce
@@ -919,9 +924,66 @@ bindValueByPos :: DPIStmt -> Column -> DPINativeTypeNum -> (DPIData WriteBuffer)
 bindValueByPos stmt col nativeType val = do
   alloca $ \dpiData' -> do
     poke dpiData' val
-    throwOracleError =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (fromNativeTypeNum nativeType) dpiData'
+    throwOracleError
+      =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (fromNativeTypeNum nativeType) dpiData'
     pure ()
 
 -- | Column position, starting with 1 for the first column.
 newtype Column = Column {getColumn :: Word32}
   deriving newtype (Num, Show)
+
+class ToField a where
+  tfFieldType :: Proxy a -> DPINativeTypeNum
+  toField :: a -> IO WriteBuffer
+
+
+newtype RowWriter a = RowWriter { runRowWriter :: DPIStmt -> StateT Word32 IO a }
+
+instance Functor RowWriter where
+  fmap f g = RowWriter $ \dpiStmt -> f <$> runRowWriter g dpiStmt
+
+instance Applicative RowWriter where
+  pure a = RowWriter $ \_ -> pure a
+  fn <*> g = RowWriter $ \dpiStmt -> do
+    f <- runRowWriter fn dpiStmt
+    f <$> runRowWriter g dpiStmt
+
+instance Monad RowWriter where
+  return = pure
+  f >>= g = RowWriter $ \dpiStmt -> do
+    f' <- runRowWriter f dpiStmt
+    runRowWriter (g f') dpiStmt
+
+instance ToField String where
+  tfFieldType Proxy = DPI_NATIVE_TYPE_BYTES
+  toField text = AsBytes <$> mkDPIBytesUTF8 text
+
+instance ToField Double where
+  tfFieldType Proxy = DPI_NATIVE_TYPE_DOUBLE
+  toField double = pure $ AsDouble double
+
+class ToRow a where
+  toRow :: a -> RowWriter a
+
+
+row :: forall a. ToField a => a -> RowWriter a
+row field = RowWriter $ \stmt -> do
+    col <- modify (+1) >> get
+    liftIO $ do
+      fieldValue <- DPIData 0 <$> toField field
+      bindValueByPos stmt (Column col) (tfFieldType (Proxy @a)) fieldValue
+    pure field
+
+data BankUser =
+  BankUser
+  { userId :: String
+  , userName :: String
+  , userBalance :: Double
+  , userEmail :: String
+  } deriving Show
+
+instance ToRow BankUser where
+  toRow BankUser{..} = BankUser <$> (row userId) <*> (row userName) <*> (row userBalance) <*> (row userEmail)
+
+autoBind :: ToRow a => DPIStmt -> a -> IO a
+autoBind stmt row = evalStateT (runRowWriter (toRow row) stmt) 0
