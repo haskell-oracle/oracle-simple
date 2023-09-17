@@ -762,6 +762,44 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
+
+
+
+-- | Class of all Haskell types that have an equivalent DPI native type.
+class HasDPINativeType a where
+  dpiNativeType :: Proxy a -> DPINativeTypeNum
+  -- ^ DPI native type for the Haskell type
+  --
+instance HasDPINativeType Double where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_DOUBLE
+
+instance HasDPINativeType Float where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_FLOAT
+
+instance HasDPINativeType DPITimeStamp where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
+
+instance HasDPINativeType Text where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
+
+instance HasDPINativeType String where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
+
+instance HasDPINativeType Int64 where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_INT64
+
+instance HasDPINativeType Word64 where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_UINT64
+
+instance HasDPINativeType Bool where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BOOLEAN
+
+instance HasDPINativeType a => HasDPINativeType (Maybe a) where
+  dpiNativeType Proxy = dpiNativeType (Proxy @a)
+
+instance HasDPINativeType Int where
+  dpiNativeType Proxy = dpiNativeType (Proxy @Int64)
+
 data DPINativeTypeNum
   = DPI_NATIVE_TYPE_INT64
   | DPI_NATIVE_TYPE_UINT64
@@ -939,12 +977,9 @@ bindValueByPos stmt col nativeType val = do
 newtype Column = Column {getColumn :: Word32}
   deriving newtype (Num, Show)
 
-class ToField a where
-  tfFieldType :: Proxy a -> DPINativeTypeNum
-  toField :: a -> IO WriteBuffer
-
-
 newtype RowWriter a = RowWriter { runRowWriter :: DPIStmt -> StateT Column IO a }
+
+newtype RowWriter' a = RowWriter' { runRowWriter' :: DPIStmt -> a -> StateT Column IO () }
 
 instance Functor RowWriter where
   fmap f g = RowWriter $ \dpiStmt -> f <$> runRowWriter g dpiStmt
@@ -961,19 +996,34 @@ instance Monad RowWriter where
     f' <- runRowWriter f dpiStmt
     runRowWriter (g f') dpiStmt
 
+class HasDPINativeType a => ToField a where
+  toField :: a -> IO WriteBuffer
+
 instance ToField String where
-  tfFieldType Proxy = DPI_NATIVE_TYPE_BYTES
-  toField text = AsBytes <$> mkDPIBytesUTF8 text
+  toField = fmap AsBytes . mkDPIBytesUTF8
+
+instance ToField Text where
+  toField = fmap AsBytes . mkDPIBytesUTF8 . unpack
 
 instance ToField Double where
-  tfFieldType Proxy = DPI_NATIVE_TYPE_DOUBLE
-  toField double = pure $ AsDouble double
+  toField = pure . AsDouble
+
+instance ToField Float where
+  toField = pure . AsFloat
+
+instance ToField DPITimeStamp where
+  toField = pure . AsTimestamp
+
+instance ToField Int64 where
+  toField = pure . AsInt64
+
+instance ToField Int where
+  toField = pure . AsInt64 . fromIntegral
 
 class ToRow a where
   toRow :: a -> RowWriter a
 
 instance ToField a => ToField (Maybe a) where
-  tfFieldType _ = tfFieldType (Proxy @a)
   toField (Just val) = toField val
   toField Nothing = pure $ AsNull nullPtr
 
@@ -985,19 +1035,24 @@ row field = RowWriter $ \stmt -> do
       let dataIsNull = case dataValue of
             (AsNull _) -> 1
             _ -> 0
-      bindValueByPos stmt col (tfFieldType (Proxy @a)) (DPIData {..})
+      bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData {..})
     pure field
 
-data BankUser =
-  BankUser
-  { userId :: String
-  , userName :: String
-  , userBalance :: Double
-  , userEmail :: Maybe String
+data SampleTable =
+  SampleTable
+  { sampleString :: String
+  , sampleText :: Text
+  , sampleDouble :: Maybe Double
+  , sampleInteger :: Maybe Int
   } deriving Show
 
-instance ToRow BankUser where
-  toRow BankUser{..} = BankUser <$> (row userId) <*> (row userName) <*> (row userBalance) <*> (row userEmail)
+instance ToRow SampleTable where
+  toRow SampleTable{..} =
+    SampleTable
+    <$> (row sampleString)
+    <*> (row sampleText)
+    <*> (row sampleDouble)
+    <*> (row sampleInteger)
 
 autoBind :: ToRow a => DPIStmt -> a -> IO a
 autoBind stmt row = evalStateT (runRowWriter (toRow row) stmt) (Column 0)

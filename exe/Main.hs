@@ -3,6 +3,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE OverloadedStrings #-}
 module Main where
 
 import Data.Text (Text)
@@ -21,20 +22,22 @@ main = do
   putStrLn "\ntest insert"
   insertTest
 
--- CREATE TABLE bank_user (
---	user_id VARCHAR(20) PRIMARY KEY,
---	user_name VARCHAR(50) NOT NULL,
---	user_balance NUMBER(10,5) NOT NULL,
---	user_email VARCHAR(50)
--- );
+{-
+CREATE TABLE sample_table (
+	sample_string VARCHAR(20) PRIMARY KEY,
+	sample_text VARCHAR(50) NOT NULL,
+	sample_double NUMBER(10,5),
+	sample_integer NUMBER(10,0)
+);
+-}
 
 insertTest :: IO ()
 insertTest = do
-  let sql = "insert into bank_user values (:1, :2, :3, :4)"
+  let sql = "insert into sample_table values (:1, :2, :3, :4)"
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
   stmt <- prepareStmt conn sql
 
-  autoBind stmt (BankUser "d001" "Jane Doe" 9920.5 Nothing)
+  autoBind stmt (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
   execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 
   {-
@@ -55,6 +58,7 @@ insertTest = do
 
 newtype RowCount = RowCount { getRowCount :: Double }
   deriving stock (Show)
+  deriving newtype (HasDPINativeType)
   deriving newtype (FromField)
 
 data ReturnedRow = ReturnedRow

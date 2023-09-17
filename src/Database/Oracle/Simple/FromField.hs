@@ -21,51 +21,40 @@ import Foreign.Ptr
 import Foreign.Storable.Generic
 
 -- | A type that may be parsed from a database field.
-class FromField a where
-  fieldType :: Proxy a -> DPINativeTypeNum
+class HasDPINativeType a => FromField a where
   fromField :: FieldParser a
 
 instance Functor FieldParser where
   fmap f FieldParser{..} = FieldParser (fmap f <$> readDPIDataBuffer)
 
 instance FromField Double where
-  fieldType Proxy = DPI_NATIVE_TYPE_DOUBLE
   fromField = FieldParser getDouble
 
 instance FromField Float where
-  fieldType Proxy = DPI_NATIVE_TYPE_FLOAT
   fromField = FieldParser getFloat
 
 instance FromField DPITimeStamp where
-  fieldType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
   fromField = FieldParser getTimestamp
 
 instance FromField Text where
-  fieldType Proxy = DPI_NATIVE_TYPE_BYTES
   fromField = FieldParser getText
 
 instance FromField String where
-  fieldType Proxy = DPI_NATIVE_TYPE_BYTES
   fromField = FieldParser getString
 
 instance FromField Int64 where
-  fieldType Proxy = DPI_NATIVE_TYPE_INT64
   fromField = FieldParser getInt64
 
 instance FromField Word64 where
-  fieldType Proxy = DPI_NATIVE_TYPE_UINT64
   fromField = FieldParser getWord64
 
 instance FromField Bool where
-  fieldType Proxy = DPI_NATIVE_TYPE_BOOLEAN
   fromField = FieldParser getBool
 
 instance FromField Int where
-  fieldType Proxy = fieldType (Proxy @Int64)
   fromField = fromIntegral <$> fromField @Int64
 
 instance FromField a => FromField (Maybe a) where
-  fieldType Proxy = fieldType (Proxy @a)
   fromField = FieldParser $ \ptr -> do
     result <- dpiData_getIsNull ptr
     if result == 1
