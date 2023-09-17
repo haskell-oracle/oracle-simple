@@ -89,9 +89,9 @@ fieldWith FieldParser{..} = RowParser $ \dpiStmt -> do
 data RowParseError
   = -- | We encountered a type that we were not expecting.
     TypeMismatch
-    { expectedType :: DPINativeTypeNum
+    { expectedType :: DPINativeType
     -- ^ The DPI native type we were expecting
-    , gotType :: DPINativeTypeNum
+    , gotType :: DPINativeType
     -- ^ The DPI native type we got
     , column :: Column
     -- ^ Column position where type mismatch was encountered (1-indexed)

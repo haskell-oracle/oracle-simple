@@ -8,7 +8,8 @@ module Main where
 
 import Data.Text (Text)
 import Database.Oracle.Simple
-import GHC.Generics (Generic)
+import GHC.Generics 
+import Data.Proxy
 
 main :: IO ()
 main = do
@@ -33,12 +34,17 @@ CREATE TABLE sample_table (
 
 insertTest :: IO ()
 insertTest = do
-  let sql = "insert into sample_table values (:1, :2, :3, :4)"
+  -- let sql = "insert into sample_table values (:1, :2, :3, :4)"
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
-  stmt <- prepareStmt conn sql
 
-  autoBind stmt (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
-  execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+  autoInsert
+    conn
+    [ (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
+    , (SampleTable "d002" "Some more text" Nothing (Just 10))
+    , (SampleTable "d003" "Hello world" (Just 3.14) Nothing)
+    , (SampleTable "d004" "Goodbye!"  Nothing Nothing)
+    ]
+
 
   {-
   idVal' <- mkDPIBytesUTF8 "d001"

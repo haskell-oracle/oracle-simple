@@ -17,9 +17,13 @@
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE KindSignatures #-}
 
 module Database.Oracle.Simple.Internal where
 
+import Data.Kind
+import Data.List as L
 import GHC.TypeLits
 import GHC.Generics
 import Control.Monad.State.Strict
@@ -318,6 +322,7 @@ globalContext :: IORef DPIContext
 {-# NOINLINE globalContext #-}
 globalContext = unsafePerformIO (newIORef =<< createContext)
 
+
 foreign import ccall "getMajorVersion" getMajorVersion :: IO CInt
 foreign import ccall "getMinorVersion" getMinorVersion :: IO CInt
 
@@ -587,6 +592,9 @@ data DPITimeStamp = DPITimeStamp
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+instance HasDPINativeType DPITimeStamp where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
+
 -- struct dpiAppContext {
 --     const char *namespaceName;
 --     uint32_t namespaceNameLength;
@@ -750,12 +758,12 @@ getQueryValue
   -- ^ Statement from which column value is to be retrieved
   -> CUInt
   -- ^ Column position
-  -> IO (DPINativeTypeNum, Ptr (DPIData ReadBuffer))
+  -> IO (DPINativeType, Ptr (DPIData ReadBuffer))
 getQueryValue stmt pos = do
   alloca $ \(buffer :: Ptr (Ptr (DPIData ReadBuffer))) -> do
     alloca $ \(typ :: Ptr CUInt) -> do
       throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer
-      (toNativeTypeNum <$> peek typ) >>= \case
+      (uintToDPINativeType <$> peek typ) >>= \case
         Nothing ->
           error "getQueryValue: Invalid type returned"
         Just typ -> do
@@ -767,7 +775,7 @@ getQueryValue stmt pos = do
 
 -- | Class of all Haskell types that have an equivalent DPI native type.
 class HasDPINativeType a where
-  dpiNativeType :: Proxy a -> DPINativeTypeNum
+  dpiNativeType :: Proxy a -> DPINativeType
   -- ^ DPI native type for the Haskell type
   --
 instance HasDPINativeType Double where
@@ -775,9 +783,6 @@ instance HasDPINativeType Double where
 
 instance HasDPINativeType Float where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_FLOAT
-
-instance HasDPINativeType DPITimeStamp where
-  dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
 
 instance HasDPINativeType Text where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
@@ -800,7 +805,7 @@ instance HasDPINativeType a => HasDPINativeType (Maybe a) where
 instance HasDPINativeType Int where
   dpiNativeType Proxy = dpiNativeType (Proxy @Int64)
 
-data DPINativeTypeNum
+data DPINativeType
   = DPI_NATIVE_TYPE_INT64
   | DPI_NATIVE_TYPE_UINT64
   | DPI_NATIVE_TYPE_FLOAT
@@ -820,44 +825,44 @@ data DPINativeTypeNum
   | DPI_NATIVE_TYPE_NULL
   deriving (Show, Eq)
 
-fromNativeTypeNum :: DPINativeTypeNum -> CUInt
-fromNativeTypeNum DPI_NATIVE_TYPE_INT64 = 3000
-fromNativeTypeNum DPI_NATIVE_TYPE_UINT64 = 3001
-fromNativeTypeNum DPI_NATIVE_TYPE_FLOAT = 3002
-fromNativeTypeNum DPI_NATIVE_TYPE_DOUBLE = 3003
-fromNativeTypeNum DPI_NATIVE_TYPE_BYTES = 3004
-fromNativeTypeNum DPI_NATIVE_TYPE_TIMESTAMP = 3005
-fromNativeTypeNum DPI_NATIVE_TYPE_INTERVAL_DS = 3006
-fromNativeTypeNum DPI_NATIVE_TYPE_INTERVAL_YM = 3007
-fromNativeTypeNum DPI_NATIVE_TYPE_LOB = 3008
-fromNativeTypeNum DPI_NATIVE_TYPE_OBJECT = 3009
-fromNativeTypeNum DPI_NATIVE_TYPE_STMT = 3010
-fromNativeTypeNum DPI_NATIVE_TYPE_BOOLEAN = 3011
-fromNativeTypeNum DPI_NATIVE_TYPE_ROWID = 3012
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON = 3013
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON_OBJECT = 3014
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON_ARRAY = 3015
-fromNativeTypeNum DPI_NATIVE_TYPE_NULL = 3016
+dpiNativeTypeToUInt :: DPINativeType -> CUInt
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_INT64 = 3000
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_UINT64 = 3001
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_FLOAT = 3002
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_DOUBLE = 3003
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_BYTES = 3004
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_TIMESTAMP = 3005
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_INTERVAL_DS = 3006
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_INTERVAL_YM = 3007
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_LOB = 3008
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_OBJECT = 3009
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_STMT = 3010
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_BOOLEAN = 3011
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_ROWID = 3012
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_JSON = 3013
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_JSON_OBJECT = 3014
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_JSON_ARRAY = 3015
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_NULL = 3016
 
-toNativeTypeNum :: CUInt -> Maybe DPINativeTypeNum
-toNativeTypeNum 3000 = Just DPI_NATIVE_TYPE_INT64
-toNativeTypeNum 3001 = Just DPI_NATIVE_TYPE_UINT64
-toNativeTypeNum 3002 = Just DPI_NATIVE_TYPE_FLOAT
-toNativeTypeNum 3003 = Just DPI_NATIVE_TYPE_DOUBLE
-toNativeTypeNum 3004 = Just DPI_NATIVE_TYPE_BYTES
-toNativeTypeNum 3005 = Just DPI_NATIVE_TYPE_TIMESTAMP
-toNativeTypeNum 3006 = Just DPI_NATIVE_TYPE_INTERVAL_DS
-toNativeTypeNum 3007 = Just DPI_NATIVE_TYPE_INTERVAL_YM
-toNativeTypeNum 3008 = Just DPI_NATIVE_TYPE_LOB
-toNativeTypeNum 3009 = Just DPI_NATIVE_TYPE_OBJECT
-toNativeTypeNum 3010 = Just DPI_NATIVE_TYPE_STMT
-toNativeTypeNum 3011 = Just DPI_NATIVE_TYPE_BOOLEAN
-toNativeTypeNum 3012 = Just DPI_NATIVE_TYPE_ROWID
-toNativeTypeNum 3013 = Just DPI_NATIVE_TYPE_JSON
-toNativeTypeNum 3014 = Just DPI_NATIVE_TYPE_JSON_OBJECT
-toNativeTypeNum 3015 = Just DPI_NATIVE_TYPE_JSON_ARRAY
-toNativeTypeNum 3016 = Just DPI_NATIVE_TYPE_NULL
-toNativeTypeNum _ = Nothing
+uintToDPINativeType :: CUInt -> Maybe DPINativeType
+uintToDPINativeType 3000 = Just DPI_NATIVE_TYPE_INT64
+uintToDPINativeType 3001 = Just DPI_NATIVE_TYPE_UINT64
+uintToDPINativeType 3002 = Just DPI_NATIVE_TYPE_FLOAT
+uintToDPINativeType 3003 = Just DPI_NATIVE_TYPE_DOUBLE
+uintToDPINativeType 3004 = Just DPI_NATIVE_TYPE_BYTES
+uintToDPINativeType 3005 = Just DPI_NATIVE_TYPE_TIMESTAMP
+uintToDPINativeType 3006 = Just DPI_NATIVE_TYPE_INTERVAL_DS
+uintToDPINativeType 3007 = Just DPI_NATIVE_TYPE_INTERVAL_YM
+uintToDPINativeType 3008 = Just DPI_NATIVE_TYPE_LOB
+uintToDPINativeType 3009 = Just DPI_NATIVE_TYPE_OBJECT
+uintToDPINativeType 3010 = Just DPI_NATIVE_TYPE_STMT
+uintToDPINativeType 3011 = Just DPI_NATIVE_TYPE_BOOLEAN
+uintToDPINativeType 3012 = Just DPI_NATIVE_TYPE_ROWID
+uintToDPINativeType 3013 = Just DPI_NATIVE_TYPE_JSON
+uintToDPINativeType 3014 = Just DPI_NATIVE_TYPE_JSON_OBJECT
+uintToDPINativeType 3015 = Just DPI_NATIVE_TYPE_JSON_ARRAY
+uintToDPINativeType 3016 = Just DPI_NATIVE_TYPE_NULL
+uintToDPINativeType _ = Nothing
 
 foreign import ccall "dpiConn_release" dpiConn_release :: DPIConn -> IO CInt
 foreign import ccall "dpiStmt_release" dpiStmt_release :: DPIStmt -> IO CInt
@@ -965,12 +970,12 @@ foreign import ccall "dpiStmt_bindValueByPos"
     -> IO CInt
     -- ^ int
 
-bindValueByPos :: DPIStmt -> Column -> DPINativeTypeNum -> (DPIData WriteBuffer) -> IO ()
+bindValueByPos :: DPIStmt -> Column -> DPINativeType -> (DPIData WriteBuffer) -> IO ()
 bindValueByPos stmt col nativeType val = do
   alloca $ \dpiData' -> do
     poke dpiData' val
     throwOracleError
-      =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (fromNativeTypeNum nativeType) dpiData'
+      =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (dpiNativeTypeToUInt nativeType) dpiData'
     pure ()
 
 -- | Column position, starting with 1 for the first column.
@@ -1044,7 +1049,12 @@ data SampleTable =
   , sampleText :: Text
   , sampleDouble :: Maybe Double
   , sampleInteger :: Maybe Int
-  } deriving Show
+  } deriving (Show, Generic)
+
+-- wip: auto derive
+instance TableStats SampleTable where
+  tableName _ = "sample_table"
+  columnCount _ = 4
 
 instance ToRow SampleTable where
   toRow SampleTable{..} =
@@ -1056,3 +1066,28 @@ instance ToRow SampleTable where
 
 autoBind :: ToRow a => DPIStmt -> a -> IO a
 autoBind stmt row = evalStateT (runRowWriter (toRow row) stmt) (Column 0)
+
+insert :: ToRow a => DPIConn -> String -> [a] -> IO ()
+insert conn sql rows = do
+  stmt <- prepareStmt conn sql
+  forM_ rows $ \row -> do
+    _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
+    execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+
+autoInsert :: forall a. (TableStats a, ToRow a) => DPIConn -> [a] -> IO ()
+autoInsert conn rows = do
+  let sql = buildInsertStmt (undefined :: a)
+  stmt <- prepareStmt conn sql
+  forM_ rows $ \row -> do
+    _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
+    execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+
+buildInsertStmt :: forall a. TableStats a => a -> String
+buildInsertStmt a =
+  let tname = tableName (undefined :: a)
+      colCount = columnCount (undefined :: a)
+  in "insert into " <> tname <> " values " <> "(" <> (L.intercalate "," $ fmap (":" <>) $ show <$> [1..colCount]) <> ")"
+
+class TableStats a where
+  tableName :: a -> String
+  columnCount :: a -> Int
