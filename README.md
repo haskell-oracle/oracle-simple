@@ -3,6 +3,7 @@ oracle-simple
 ![](https://github.com/haskell-oracle/oracle-simple/actions/workflows/main.yml/badge.svg)
 
 Modern bindings to Oracle [odpic](https://oracle.github.io/odpi/) C library.
+ - See [here](https://github.com/oracle/odpi/blob/main/include/dpi.h) for a list of all structs and functions used in this library.
 
 ## Example
 
@@ -62,6 +63,15 @@ data ReturnedRow = ReturnedRow
 ```bash
 $ nix-build
 ```
+
+```bash
+$ nix-shell --run 'cabal build'
+```
+
+```bash
+$ stack build
+```
+
 
 ## Test
 
