@@ -1,5 +1,6 @@
 oracle-simple
 =====================================
+![](https://github.com/haskell-oracle/oracle-simple/actions/workflows/main.yml/badge.svg)
 
 Modern bindings to Oracle [odpic](https://oracle.github.io/odpi/) C library.
 

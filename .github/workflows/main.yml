@@ -1,0 +1,17 @@
+name: oracle-simple build
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+     - uses: actions/checkout@v3.5.3
+     - uses: cachix/install-nix-action@v22
+       with:
+         nix_path: nixpkgs=channel:nixos-unstable
+     - name: build
+       run: nix-build
