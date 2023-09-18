@@ -83,8 +83,10 @@ writeField field = RowWriter $ \stmt -> do
 insert :: (ToRow a) => DPIConn -> String -> [a] -> IO Word64
 insert conn sql rows = do
   stmt <- prepareStmt conn sql
-  fmap fst <$> forAccumM 0 rows $ \totalRowsAffected row -> do
-    _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
-    execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
-    rowsAffected <- getRowCount stmt
-    pure (totalRowsAffected + rowsAffected, ())
+  foldM (go stmt) 0 rows
+    where
+      go stmt !totalRowsAffected row = do
+        _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
+        execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+        rowsAffected <- getRowCount stmt
+        pure (totalRowsAffected + rowsAffected)
