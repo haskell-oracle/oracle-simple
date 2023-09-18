@@ -17,17 +17,19 @@ main = do
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
 
   -- selecting
-  let stmt = "select count(*), sysdate, 'text goes here', 125.24, TO_BINARY_FLOAT ('3.14'), CAST(null AS NUMBER(10,2)) from dual"
-  rows <- query @ReturnedRow conn (stmt <> " UNION ALL " <> stmt)
+  let selectStmt = "select count(*), sysdate, 'text goes here', 125.24, TO_BINARY_FLOAT ('3.14'), CAST(null AS NUMBER(10,2)) from dual"
+  rows <- query @ReturnedRow conn (selectStmt <> " UNION ALL " <> selectStmt)
   mapM_ print rows
 
   -- inserting
-  rowsAffected <- autoInsert
+  let insertStmt = "insert into sample_table values (:1, :2, :3, :4)"
+  rowsAffected <- insert
     conn
+    insertStmt
     [ (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
     , (SampleTable "d002" "Some more text" Nothing (Just 10))
     , (SampleTable "d003" "Hello world" (Just 3.14) Nothing)
-    , (SampleTable "d004" "Goodbye!"  Nothing Nothing)
+    , (SampleTable "d004" "Goodbye!" Nothing Nothing)
     ]
   putStrLn $ "Rows affected: " <> show rowsAffected
 
@@ -60,8 +62,6 @@ data SampleTable =
   , sampleDouble :: Maybe Double
   , sampleInteger :: Maybe Int
   } deriving (Show, Generic)
-
-instance HasTableInfo SampleTable
 
 instance ToRow SampleTable where
   toRow SampleTable{..} =

@@ -32,7 +32,6 @@ import Data.List as L
 import Data.Text
 import Data.Typeable
 import Data.Word
-import Database.Oracle.Simple.TableInfo
 import Foreign
 import Foreign.C
 import Foreign.C.String
@@ -893,32 +892,29 @@ newtype ReadBuffer = ReadBuffer (Ptr ReadBuffer)
 -- | @dpiDataBuffer@ union that we can write to.
 -- We cannot read from this without a hint as to what type of data it contains.
 data WriteBuffer
-  = AsBoolean CBool
-  | AsInt64 Int64
+  = AsInt64 Int64
   | AsUInt64 Word64
-  | AsFloat Float
   | AsDouble Double
   | AsString CString
   | AsBytes DPIBytes
   | AsTimestamp DPITimestamp
-  | AsNull (Ptr ())
+  | AsNull
   deriving (Show, Eq, Generic)
 
 instance Storable WriteBuffer where
-  sizeOf _ = sizeOf (undefined :: DPITimestamp) -- size of largest element
+  sizeOf _ = sizeOf (undefined :: DPITimestamp)
+
   alignment _ = 8
-  peek = error "WriteBuffer says: don't peek in here!" -- handle this better!
+
+  peek = error "WriteBuffer: peek not supported!"
 
   poke ptr (AsInt64 intVal) = poke (castPtr ptr) intVal
   poke ptr (AsUInt64 word64Val) = poke (castPtr ptr) word64Val
-  poke ptr (AsFloat floatVal) = poke (castPtr ptr) floatVal
   poke ptr (AsDouble doubleVal) = poke (castPtr ptr) doubleVal
   poke ptr (AsString cStringVal) = poke (castPtr ptr) cStringVal
   poke ptr (AsBytes dpiBytesVal) = poke (castPtr ptr) dpiBytesVal
   poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
-  poke ptr (AsNull nullVal) = poke (castPtr ptr) nullVal
-
--- instance GStorable DPIDataBuffer
+  poke ptr AsNull = poke (castPtr ptr) nullPtr
 
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 
@@ -983,8 +979,6 @@ foreign import ccall "dpiStmt_getRowCount"
     -> Ptr Word64
     -- uint64_t *count
     -> IO CInt
-
--- int
 
 getRowCount :: DPIStmt -> IO Word64
 getRowCount stmt = do

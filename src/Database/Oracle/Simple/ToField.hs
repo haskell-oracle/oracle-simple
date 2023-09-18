@@ -13,9 +13,6 @@ class (HasDPINativeType a) => ToField a where
 instance ToField Double where
   toField = pure . AsDouble
 
-instance ToField Float where
-  toField = pure . AsFloat
-
 instance ToField Text where
   toField = fmap AsBytes . mkDPIBytesUTF8 . unpack
 
@@ -27,12 +24,6 @@ instance ToField Int64 where
 
 instance ToField Int where
   toField = pure . AsInt64 . fromIntegral
-
-instance ToField Bool where
-  toField = pure . AsBoolean . boolToCBool
-   where
-    boolToCBool False = 0
-    boolToCBool True = 1
 
 instance ToField DPITimestamp where
   toField = pure . AsTimestamp
