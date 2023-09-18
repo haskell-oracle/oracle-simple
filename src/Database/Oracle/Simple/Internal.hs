@@ -22,6 +22,7 @@
 
 module Database.Oracle.Simple.Internal where
 
+import Database.Oracle.Simple.TableInfo
 import Data.Kind
 import Data.List as L
 import GHC.TypeLits
@@ -1051,10 +1052,7 @@ data SampleTable =
   , sampleInteger :: Maybe Int
   } deriving (Show, Generic)
 
--- wip: auto derive
-instance TableStats SampleTable where
-  tableName _ = "sample_table"
-  columnCount _ = 4
+instance HasTableInfo SampleTable
 
 instance ToRow SampleTable where
   toRow SampleTable{..} =
@@ -1074,20 +1072,16 @@ insert conn sql rows = do
     _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
     execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 
-autoInsert :: forall a. (TableStats a, ToRow a) => DPIConn -> [a] -> IO ()
+autoInsert :: forall a. (HasTableInfo a, ToRow a) => DPIConn -> [a] -> IO ()
 autoInsert conn rows = do
-  let sql = buildInsertStmt (undefined :: a)
+  let sql = buildInsertStmt (Proxy :: Proxy a)
   stmt <- prepareStmt conn sql
   forM_ rows $ \row -> do
     _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
     execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
 
-buildInsertStmt :: forall a. TableStats a => a -> String
-buildInsertStmt a =
-  let tname = tableName (undefined :: a)
-      colCount = columnCount (undefined :: a)
+buildInsertStmt :: HasTableInfo a => Proxy a -> String
+buildInsertStmt proxy =
+  let tname = tableName proxy
+      colCount = columnCount proxy
   in "insert into " <> tname <> " values " <> "(" <> (L.intercalate "," $ fmap (":" <>) $ show <$> [1..colCount]) <> ")"
-
-class TableStats a where
-  tableName :: a -> String
-  columnCount :: a -> Int

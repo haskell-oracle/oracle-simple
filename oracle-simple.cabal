@@ -35,7 +35,7 @@ library
   other-modules:
     Database.Oracle.Simple.Internal, Database.Oracle.Simple.FromRow, Database.Oracle.Simple.FromField, Database.Oracle.Simple.TableInfo
   build-depends:
-    base < 5, derive-storable, text, mtl
+    base < 5, derive-storable, text, mtl, casing
   hs-source-dirs:
     src
   extra-libraries:
