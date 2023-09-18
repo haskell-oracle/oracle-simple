@@ -47,7 +47,7 @@ instance (TypeError ('Text "Sum types not supported")) => GFromRow (l :+: r) whe
   gFromRow = error "Sum types not supported"
 
 instance (FromField a) => GFromRow (K1 i a) where
-  gFromRow = K1 <$> field
+  gFromRow = K1 <$> readField
 
 newtype RowParser a = RowParser {runRowParser :: DPIStmt -> StateT Word32 IO a}
 
@@ -71,8 +71,8 @@ getRow :: forall a. (FromRow a) => DPIStmt -> IO a
 getRow stmt = evalStateT (runRowParser fromRow stmt) 0
 
 -- | Derive a @RowParser@ for a field at the specified column position.
-field :: (FromField a) => RowParser a
-field = fieldWith fromField
+readField :: (FromField a) => RowParser a
+readField = fieldWith fromField
 
 -- | Derive a 'RowParser' for a field at the specified column position
 -- using the supplied 'FieldParser'.

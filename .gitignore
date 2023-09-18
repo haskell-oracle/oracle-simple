@@ -5,3 +5,4 @@
 *.o
 *.hi
 /cabal.project.local
+/.stack-work/

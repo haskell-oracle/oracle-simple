@@ -1,3 +1,9 @@
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
@@ -5,15 +11,17 @@
 
 module Database.Oracle.Simple.ToRow where
 
-import Control.Monad
-import Control.Monad.State.Strict
-import qualified Data.List as L
-import Data.Proxy
-import Data.Traversable
-import Data.Word
-import Database.Oracle.Simple.Internal
-import Database.Oracle.Simple.ToField
-import Foreign.Ptr
+import           Control.Monad
+import           Control.Monad.State.Strict
+import qualified Data.List                       as L
+import           Data.Proxy
+import           Data.Traversable
+import           Data.Word
+import           Database.Oracle.Simple.Internal
+import           Database.Oracle.Simple.ToField
+import           Foreign.Ptr
+import           GHC.Generics
+import           GHC.TypeLits
 
 newtype RowWriter a = RowWriter {runRowWriter :: DPIStmt -> StateT Column IO a}
 
@@ -33,14 +41,37 @@ instance Monad RowWriter where
     runRowWriter (g f') dpiStmt
 
 class ToRow a where
-  toRow :: a -> RowWriter a
+  toRow :: a -> RowWriter ()
+  default toRow :: (GToRow (Rep a), Generic a) => a -> RowWriter ()
+  toRow = gToRow . from
+
+class GToRow f where
+  gToRow :: f a -> RowWriter ()
+
+instance (GToRow m) => GToRow (D1 i m) where
+  gToRow (M1 x) = gToRow x
+
+instance (GToRow m) => GToRow (C1 i m) where
+  gToRow (M1 x) = gToRow x
+
+instance (GToRow m) => GToRow (S1 i m) where
+  gToRow (M1 x) = gToRow x
+
+instance (GToRow l, GToRow r) => GToRow (l :*: r) where
+  gToRow (l :*: r) = gToRow l >> gToRow r
+
+instance (TypeError ('Text "Sum types not supported")) => GToRow (l :+: r) where
+  gToRow = error "Sum types not supported"
+
+instance (ToField a) => GToRow (K1 i a) where
+  gToRow (K1 x)= void (writeField x)
 
 instance (ToField a) => ToField (Maybe a) where
   toField (Just val) = toField val
   toField Nothing = pure AsNull
 
-row :: forall a. (ToField a) => a -> RowWriter a
-row field = RowWriter $ \stmt -> do
+writeField :: forall a. (ToField a) => a -> RowWriter ()
+writeField field = RowWriter $ \stmt -> do
   col <- modify (+ 1) >> get
   liftIO $ do
     dataValue <- toField field
@@ -48,7 +79,6 @@ row field = RowWriter $ \stmt -> do
           AsNull -> 1
           _ -> 0
     bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData{..})
-  pure field
 
 insert :: (ToRow a) => DPIConn -> String -> [a] -> IO Word64
 insert conn sql rows = do

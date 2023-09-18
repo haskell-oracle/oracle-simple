@@ -9,7 +9,7 @@ module Main where
 
 import Data.Text (Text)
 import Database.Oracle.Simple
-import GHC.Generics 
+import GHC.Generics
 import Data.Proxy
 
 main :: IO ()
@@ -22,16 +22,16 @@ main = do
   mapM_ print rows
 
   -- inserting
-  let insertStmt = "insert into sample_table values (:1, :2, :3, :4)"
-  rowsAffected <- insert
-    conn
-    insertStmt
-    [ (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
-    , (SampleTable "d002" "Some more text" Nothing (Just 10))
-    , (SampleTable "d003" "Hello world" (Just 3.14) Nothing)
-    , (SampleTable "d004" "Goodbye!" Nothing Nothing)
-    ]
-  putStrLn $ "Rows affected: " <> show rowsAffected
+  -- let insertStmt = "insert into sample_table values (:1, :2, :3, :4)"
+  -- rowsAffected <- insert
+  --   conn
+  --   insertStmt
+  --   [ (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
+  --   , (SampleTable "d002" "Some more text" Nothing (Just 10))
+  --   , (SampleTable "d003" "Hello world" (Just 3.14) Nothing)
+  --   , (SampleTable "d004" "Goodbye!" Nothing Nothing)
+  --   ]
+  -- putStrLn $ "Rows affected: " <> show rowsAffected
 
 newtype RowCount = RowCount { getRowCount :: Double }
   deriving stock (Show)
@@ -61,12 +61,12 @@ data SampleTable =
   , sampleText :: Text
   , sampleDouble :: Maybe Double
   , sampleInteger :: Maybe Int
-  } deriving (Show, Generic)
+  } deriving stock (Show, Generic)
+    deriving anyclass ToRow
 
-instance ToRow SampleTable where
-  toRow SampleTable{..} =
-    SampleTable
-    <$> (row sampleString)
-    <*> (row sampleText)
-    <*> (row sampleDouble)
-    <*> (row sampleInteger)
+-- instance ToRow SampleTable where
+--   toRow SampleTable{..} = do
+--     rowField sampleString
+--     rowField sampleText
+--     rowField sampleDouble
+--     rowField sampleInteger
