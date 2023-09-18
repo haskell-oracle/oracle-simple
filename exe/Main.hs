@@ -4,6 +4,7 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RecordWildCards #-}
 module Main where
 
 import Data.Text (Text)
@@ -23,6 +24,23 @@ main = do
   putStrLn "\ntest insert"
   insertTest
 
+
+newtype RowCount = RowCount { getRowCount :: Double }
+  deriving stock (Show)
+  deriving newtype (HasDPINativeType)
+  deriving newtype (FromField)
+
+data ReturnedRow = ReturnedRow
+  { count :: RowCount
+  , sysdate :: DPITimestamp
+  , message :: Maybe String
+  , amount :: Double
+  , piValue :: Float
+  , nullValue :: Maybe Double
+  }
+  deriving stock (Show, Generic)
+  deriving anyclass FromRow
+
 {-
 CREATE TABLE sample_table (
 	sample_string VARCHAR(20) PRIMARY KEY,
@@ -32,11 +50,27 @@ CREATE TABLE sample_table (
 );
 -}
 
+data SampleTable =
+  SampleTable
+  { sampleString :: String
+  , sampleText :: Text
+  , sampleDouble :: Maybe Double
+  , sampleInteger :: Maybe Int
+  } deriving (Show, Generic)
+
+instance HasTableInfo SampleTable
+
+instance ToRow SampleTable where
+  toRow SampleTable{..} =
+    SampleTable
+    <$> (row sampleString)
+    <*> (row sampleText)
+    <*> (row sampleDouble)
+    <*> (row sampleInteger)
+
 insertTest :: IO ()
 insertTest = do
-  -- let sql = "insert into sample_table values (:1, :2, :3, :4)"
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
-
   autoInsert
     conn
     [ (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
@@ -44,43 +78,4 @@ insertTest = do
     , (SampleTable "d003" "Hello world" (Just 3.14) Nothing)
     , (SampleTable "d004" "Goodbye!"  Nothing Nothing)
     ]
-
-
-  {-
-  idVal' <- mkDPIBytesUTF8 "d001"
-  let idVal = DPIData 0 (AsBytes idVal')
-  nameVal' <- mkDPIBytesUTF8 "Jane Doe"
-  let nameVal = DPIData 0 (AsBytes nameVal')
-  let balanceVal = DPIData 0 (AsDouble 9920.5)
-  emailVal' <- mkDPIBytesUTF8 "peter@gmail.com"
-  let emailVal = DPIData 0 (AsBytes emailVal')
-  bindValueByPos stmt (Column 1) DPI_NATIVE_TYPE_BYTES idVal
-  bindValueByPos stmt (Column 2) DPI_NATIVE_TYPE_BYTES nameVal
-  bindValueByPos stmt (Column 3) DPI_NATIVE_TYPE_DOUBLE balanceVal
-  bindValueByPos stmt (Column 4) DPI_NATIVE_TYPE_BYTES emailVal
-  execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS -- TODO use default and then commit explicitly -}
   pure ()
-
-
-newtype RowCount = RowCount { getRowCount :: Double }
-  deriving stock (Show)
-  deriving newtype (HasDPINativeType)
-  deriving newtype (FromField)
-
-data ReturnedRow = ReturnedRow
-  { count :: RowCount
-  , sysdate :: DPITimeStamp
-  , message :: Maybe String
-  , amount :: Double
-  , piValue :: Float
-  , nullValue :: Maybe Double
-  }
-  deriving stock (Show, Generic)
-  deriving anyclass FromRow
-
--- instance FromRow ReturnedRow where
---   fromRow = do
---     count <- field
---     sysdate <- field
---     amount <- field
---     pure $ ReturnedRow{..}

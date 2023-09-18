@@ -33,7 +33,7 @@ instance FromField Double where
 instance FromField Float where
   fromField = FieldParser getFloat
 
-instance FromField DPITimeStamp where
+instance FromField DPITimestamp where
   fromField = FieldParser getTimestamp
 
 instance FromField Text where
@@ -62,9 +62,9 @@ instance FromField a => FromField (Maybe a) where
       else Just <$> readDPIDataBuffer (fromField @a) ptr
 
 -- instance FromField UTCTime where
---   fieldType Proxy = fieldType (Proxy @DPITimeStamp)
+--   fieldType Proxy = fieldType (Proxy @DPITimestamp)
 --   fromField = do
---     DPITimeStamp {..} <- fromField
+--     DPITimestamp {..} <- fromField
 --     let
 --       yymmdd = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
 --       hhmmss = 0
@@ -109,7 +109,7 @@ getInt64 = dpiData_getInt64
 getWord64 :: ReadDPIBuffer Word64
 getWord64 = dpiData_getUint64
 
--- | Get an Int64 value from the data buffer.
+-- | Get a boolean value from the data buffer.
 getBool :: ReadDPIBuffer Bool
 getBool ptr = (==1) <$> dpiData_getBool ptr
 
@@ -124,6 +124,6 @@ getString = buildString <=< peek <=< dpiData_getBytes
    buildString DPIBytes{..} =
      peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
 
--- | Get a `DPITimeStamp` from the buffer
-getTimestamp :: ReadDPIBuffer DPITimeStamp
+-- | Get a `DPITimestamp` from the buffer
+getTimestamp :: ReadDPIBuffer DPITimestamp
 getTimestamp = peek <=< dpiData_getTimestamp

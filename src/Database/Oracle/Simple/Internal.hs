@@ -579,7 +579,7 @@ data DPIIntervalYM = DPIIntervalYM
 --     int8_t tzMinuteOffset;
 -- } dpiTimestamp;
 
-data DPITimeStamp = DPITimeStamp
+data DPITimestamp = DPITimestamp
   { year :: Int16
   , month :: Word8
   , day :: Word8
@@ -593,7 +593,7 @@ data DPITimeStamp = DPITimeStamp
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
-instance HasDPINativeType DPITimeStamp where
+instance HasDPINativeType DPITimestamp where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
 
 -- struct dpiAppContext {
@@ -771,9 +771,6 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
-
-
-
 -- | Class of all Haskell types that have an equivalent DPI native type.
 class HasDPINativeType a where
   dpiNativeType :: Proxy a -> DPINativeType
@@ -898,19 +895,19 @@ newtype ReadBuffer = ReadBuffer (Ptr ReadBuffer)
 -- | @dpiDataBuffer@ union that we can write to.
 -- We cannot read from this without a hint as to what type of data it contains.
 data WriteBuffer =
-  AsBoolean Int
+  AsBoolean CBool
   | AsInt64 Int64
   | AsUInt64 Word64
   | AsFloat Float
   | AsDouble Double
   | AsString CString
   | AsBytes DPIBytes
-  | AsTimestamp DPITimeStamp
+  | AsTimestamp DPITimestamp
   | AsNull (Ptr ())
   deriving (Show, Eq, Generic)
 
 instance Storable WriteBuffer where
-  sizeOf _ = sizeOf (undefined :: DPITimeStamp) -- size of largest element
+  sizeOf _ = sizeOf (undefined :: DPITimestamp) -- size of largest element
   alignment _ = 8
   peek = error "WriteBuffer says: don't peek in here!" -- handle this better!
 
@@ -922,6 +919,7 @@ instance Storable WriteBuffer where
   poke ptr (AsBytes dpiBytesVal) = poke (castPtr ptr) dpiBytesVal
   poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
   poke ptr (AsNull nullVal) = poke (castPtr ptr) nullVal
+
 
 --instance GStorable DPIDataBuffer
 
@@ -941,7 +939,7 @@ foreign import ccall "dpiData_getBytes"
 -- DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
 
 foreign import ccall "dpiData_getTimestamp"
-  dpiData_getTimestamp :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPITimeStamp)
+  dpiData_getTimestamp :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPITimestamp)
 
 foreign import ccall "dpiData_getInt64"
   dpiData_getInt64 :: Ptr (DPIData ReadBuffer) -> IO Int64
@@ -983,105 +981,3 @@ bindValueByPos stmt col nativeType val = do
 newtype Column = Column {getColumn :: Word32}
   deriving newtype (Num, Show)
 
-newtype RowWriter a = RowWriter { runRowWriter :: DPIStmt -> StateT Column IO a }
-
-newtype RowWriter' a = RowWriter' { runRowWriter' :: DPIStmt -> a -> StateT Column IO () }
-
-instance Functor RowWriter where
-  fmap f g = RowWriter $ \dpiStmt -> f <$> runRowWriter g dpiStmt
-
-instance Applicative RowWriter where
-  pure a = RowWriter $ \_ -> pure a
-  fn <*> g = RowWriter $ \dpiStmt -> do
-    f <- runRowWriter fn dpiStmt
-    f <$> runRowWriter g dpiStmt
-
-instance Monad RowWriter where
-  return = pure
-  f >>= g = RowWriter $ \dpiStmt -> do
-    f' <- runRowWriter f dpiStmt
-    runRowWriter (g f') dpiStmt
-
-class HasDPINativeType a => ToField a where
-  toField :: a -> IO WriteBuffer
-
-instance ToField String where
-  toField = fmap AsBytes . mkDPIBytesUTF8
-
-instance ToField Text where
-  toField = fmap AsBytes . mkDPIBytesUTF8 . unpack
-
-instance ToField Double where
-  toField = pure . AsDouble
-
-instance ToField Float where
-  toField = pure . AsFloat
-
-instance ToField DPITimeStamp where
-  toField = pure . AsTimestamp
-
-instance ToField Int64 where
-  toField = pure . AsInt64
-
-instance ToField Int where
-  toField = pure . AsInt64 . fromIntegral
-
-class ToRow a where
-  toRow :: a -> RowWriter a
-
-instance ToField a => ToField (Maybe a) where
-  toField (Just val) = toField val
-  toField Nothing = pure $ AsNull nullPtr
-
-row :: forall a. ToField a => a -> RowWriter a
-row field = RowWriter $ \stmt -> do
-    col <- modify (+1) >> get
-    liftIO $ do
-      dataValue <- toField field
-      let dataIsNull = case dataValue of
-            (AsNull _) -> 1
-            _ -> 0
-      bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData {..})
-    pure field
-
-data SampleTable =
-  SampleTable
-  { sampleString :: String
-  , sampleText :: Text
-  , sampleDouble :: Maybe Double
-  , sampleInteger :: Maybe Int
-  } deriving (Show, Generic)
-
-instance HasTableInfo SampleTable
-
-instance ToRow SampleTable where
-  toRow SampleTable{..} =
-    SampleTable
-    <$> (row sampleString)
-    <*> (row sampleText)
-    <*> (row sampleDouble)
-    <*> (row sampleInteger)
-
-autoBind :: ToRow a => DPIStmt -> a -> IO a
-autoBind stmt row = evalStateT (runRowWriter (toRow row) stmt) (Column 0)
-
-insert :: ToRow a => DPIConn -> String -> [a] -> IO ()
-insert conn sql rows = do
-  stmt <- prepareStmt conn sql
-  forM_ rows $ \row -> do
-    _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
-    execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
-
-autoInsert :: forall a. (HasTableInfo a, ToRow a) => DPIConn -> [a] -> IO ()
-autoInsert conn rows = do
-  let sql = buildInsertStmt (Proxy :: Proxy a)
-  stmt <- prepareStmt conn sql
-  forM_ rows $ \row -> do
-    _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
-    execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
-
-buildInsertStmt :: HasTableInfo a => Proxy a -> String
-buildInsertStmt proxy =
-  let tname = tableName proxy
-      colCount = columnCount proxy
-  in "insert into " <> tname <> " values " <> "(" <> (L.intercalate "," $ fmap (":" <>) $ show <$> [1..colCount]) <> ")"
