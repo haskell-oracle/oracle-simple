@@ -1,71 +1,61 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+
 module Database.Oracle.Simple.FromField where
 
-import Data.Word
-import Data.Proxy
-import GHC.Generics
 import Control.Monad
 import Data.Coerce
 import Data.Int
+import Data.Proxy
 import Data.Text
+import Data.Word
 import Database.Oracle.Simple.Internal
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Ptr
 import Foreign.Storable.Generic
+import GHC.Generics
 
 -- | A type that may be parsed from a database field.
-class FromField a where
-  fieldType :: Proxy a -> DPINativeTypeNum
+class (HasDPINativeType a) => FromField a where
   fromField :: FieldParser a
 
 instance Functor FieldParser where
   fmap f FieldParser{..} = FieldParser (fmap f <$> readDPIDataBuffer)
 
 instance FromField Double where
-  fieldType Proxy = DPI_NATIVE_TYPE_DOUBLE
   fromField = FieldParser getDouble
 
 instance FromField Float where
-  fieldType Proxy = DPI_NATIVE_TYPE_FLOAT
   fromField = FieldParser getFloat
 
-instance FromField DPITimeStamp where
-  fieldType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
+instance FromField DPITimestamp where
   fromField = FieldParser getTimestamp
 
 instance FromField Text where
-  fieldType Proxy = DPI_NATIVE_TYPE_BYTES
   fromField = FieldParser getText
 
 instance FromField String where
-  fieldType Proxy = DPI_NATIVE_TYPE_BYTES
   fromField = FieldParser getString
 
 instance FromField Int64 where
-  fieldType Proxy = DPI_NATIVE_TYPE_INT64
   fromField = FieldParser getInt64
 
 instance FromField Word64 where
-  fieldType Proxy = DPI_NATIVE_TYPE_UINT64
   fromField = FieldParser getWord64
 
 instance FromField Bool where
-  fieldType Proxy = DPI_NATIVE_TYPE_BOOLEAN
   fromField = FieldParser getBool
 
 instance FromField Int where
-  fieldType Proxy = fieldType (Proxy @Int64)
   fromField = fromIntegral <$> fromField @Int64
 
-instance FromField a => FromField (Maybe a) where
-  fieldType Proxy = fieldType (Proxy @a)
+instance (FromField a) => FromField (Maybe a) where
   fromField = FieldParser $ \ptr -> do
     result <- dpiData_getIsNull ptr
     if result == 1
@@ -73,9 +63,9 @@ instance FromField a => FromField (Maybe a) where
       else Just <$> readDPIDataBuffer (fromField @a) ptr
 
 -- instance FromField UTCTime where
---   fieldType Proxy = fieldType (Proxy @DPITimeStamp)
+--   fieldType Proxy = fieldType (Proxy @DPITimestamp)
 --   fromField = do
---     DPITimeStamp {..} <- fromField
+--     DPITimestamp {..} <- fromField
 --     let
 --       yymmdd = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
 --       hhmmss = 0
@@ -84,7 +74,7 @@ instance FromField a => FromField (Maybe a) where
 -- | Encapsulates all information needed to parse a field as a Haskell value.
 newtype FieldParser a = FieldParser
   { readDPIDataBuffer :: ReadDPIBuffer a
-    -- ^ A function that retrieves a value of type @a@ from the DPI data buffer.
+  -- ^ A function that retrieves a value of type @a@ from the DPI data buffer.
   }
 
 instance Applicative FieldParser where
@@ -100,7 +90,7 @@ instance Monad FieldParser where
     readDPIDataBuffer (f x) ptr
 
 -- | Alias for a function that retrieves a value of type @a@ from the DPI data buffer
-type ReadDPIBuffer a = Ptr DPIData -> IO a
+type ReadDPIBuffer a = Ptr (DPIData ReadBuffer) -> IO a
 
 -- ** @ReadDPIBuffer@s for common types
 
@@ -120,9 +110,9 @@ getInt64 = dpiData_getInt64
 getWord64 :: ReadDPIBuffer Word64
 getWord64 = dpiData_getUint64
 
--- | Get an Int64 value from the data buffer.
+-- | Get a boolean value from the data buffer.
 getBool :: ReadDPIBuffer Bool
-getBool ptr = (==1) <$> dpiData_getBool ptr
+getBool ptr = (== 1) <$> dpiData_getBool ptr
 
 -- | Get Text from the data buffer
 getText :: ReadDPIBuffer Text
@@ -132,9 +122,9 @@ getText = fmap pack <$> getString
 getString :: ReadDPIBuffer String
 getString = buildString <=< peek <=< dpiData_getBytes
  where
-   buildString DPIBytes{..} =
-     peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+  buildString DPIBytes{..} =
+    peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
 
--- | Get a `DPITimeStamp` from the buffer
-getTimestamp :: ReadDPIBuffer DPITimeStamp
+-- | Get a `DPITimestamp` from the buffer
+getTimestamp :: ReadDPIBuffer DPITimestamp
 getTimestamp = peek <=< dpiData_getTimestamp

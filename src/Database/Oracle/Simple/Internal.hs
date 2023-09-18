@@ -1,22 +1,34 @@
 {-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Database.Oracle.Simple.Internal where
 
 import Control.Exception
 import Control.Monad
+import Control.Monad.State.Strict
 import Data.Coerce
 import Data.IORef
+import Data.Kind
+import Data.List as L
 import Data.Text
 import Data.Typeable
 import Data.Word
@@ -28,6 +40,7 @@ import Foreign.Marshal.Utils
 import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
+import GHC.TypeLits
 import System.IO.Unsafe
 
 newtype DPIStmt = DPIStmt (Ptr DPIStmt)
@@ -515,6 +528,12 @@ data DPIBytes = DPIBytes
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+mkDPIBytesUTF8 :: String -> IO DPIBytes
+mkDPIBytesUTF8 str = do
+  (dpiBytesPtr, fromIntegral -> dpiBytesLength) <- newCStringLen str
+  dpiBytesEncoding <- newCString "UTF-8"
+  pure $ DPIBytes{..}
+
 -- typedef struct {
 --     int32_t days;
 --     int32_t hours;
@@ -557,7 +576,7 @@ data DPIIntervalYM = DPIIntervalYM
 --     int8_t tzMinuteOffset;
 -- } dpiTimestamp;
 
-data DPITimeStamp = DPITimeStamp
+data DPITimestamp = DPITimestamp
   { year :: Int16
   , month :: Word8
   , day :: Word8
@@ -570,6 +589,9 @@ data DPITimeStamp = DPITimeStamp
   }
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
+
+instance HasDPINativeType DPITimestamp where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
 
 -- struct dpiAppContext {
 --     const char *namespaceName;
@@ -725,7 +747,7 @@ foreign import ccall "dpiStmt_getQueryValue"
     :: DPIStmt
     -> CUInt
     -> Ptr CUInt
-    -> Ptr (Ptr DPIData)
+    -> Ptr (Ptr (DPIData ReadBuffer))
     -> IO CInt
 
 -- | Return the value of the column at the given position for the currently fetched row.
@@ -734,19 +756,51 @@ getQueryValue
   -- ^ Statement from which column value is to be retrieved
   -> CUInt
   -- ^ Column position
-  -> IO (DPINativeTypeNum, Ptr DPIData)
+  -> IO (DPINativeType, Ptr (DPIData ReadBuffer))
 getQueryValue stmt pos = do
-  alloca $ \(buffer :: Ptr (Ptr DPIData)) -> do
+  alloca $ \(buffer :: Ptr (Ptr (DPIData ReadBuffer))) -> do
     alloca $ \(typ :: Ptr CUInt) -> do
       throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer
-      (toNativeTypeNum <$> peek typ) >>= \case
+      (uintToDPINativeType <$> peek typ) >>= \case
         Nothing ->
           error "getQueryValue: Invalid type returned"
         Just typ -> do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
-data DPINativeTypeNum
+-- | Class of all Haskell types that have an equivalent DPI native type.
+class HasDPINativeType a where
+  dpiNativeType :: Proxy a -> DPINativeType
+  -- ^ DPI native type for the Haskell type
+
+instance HasDPINativeType Double where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_DOUBLE
+
+instance HasDPINativeType Float where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_FLOAT
+
+instance HasDPINativeType Text where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
+
+instance HasDPINativeType String where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
+
+instance HasDPINativeType Int64 where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_INT64
+
+instance HasDPINativeType Word64 where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_UINT64
+
+instance HasDPINativeType Bool where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BOOLEAN
+
+instance (HasDPINativeType a) => HasDPINativeType (Maybe a) where
+  dpiNativeType Proxy = dpiNativeType (Proxy @a)
+
+instance HasDPINativeType Int where
+  dpiNativeType Proxy = dpiNativeType (Proxy @Int64)
+
+data DPINativeType
   = DPI_NATIVE_TYPE_INT64
   | DPI_NATIVE_TYPE_UINT64
   | DPI_NATIVE_TYPE_FLOAT
@@ -766,44 +820,44 @@ data DPINativeTypeNum
   | DPI_NATIVE_TYPE_NULL
   deriving (Show, Eq)
 
-fromNativeTypeNum :: DPINativeTypeNum -> CUInt
-fromNativeTypeNum DPI_NATIVE_TYPE_INT64 = 3000
-fromNativeTypeNum DPI_NATIVE_TYPE_UINT64 = 3001
-fromNativeTypeNum DPI_NATIVE_TYPE_FLOAT = 3002
-fromNativeTypeNum DPI_NATIVE_TYPE_DOUBLE = 3003
-fromNativeTypeNum DPI_NATIVE_TYPE_BYTES = 3004
-fromNativeTypeNum DPI_NATIVE_TYPE_TIMESTAMP = 3005
-fromNativeTypeNum DPI_NATIVE_TYPE_INTERVAL_DS = 3006
-fromNativeTypeNum DPI_NATIVE_TYPE_INTERVAL_YM = 3007
-fromNativeTypeNum DPI_NATIVE_TYPE_LOB = 3008
-fromNativeTypeNum DPI_NATIVE_TYPE_OBJECT = 3009
-fromNativeTypeNum DPI_NATIVE_TYPE_STMT = 3010
-fromNativeTypeNum DPI_NATIVE_TYPE_BOOLEAN = 3011
-fromNativeTypeNum DPI_NATIVE_TYPE_ROWID = 3012
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON = 3013
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON_OBJECT = 3014
-fromNativeTypeNum DPI_NATIVE_TYPE_JSON_ARRAY = 3015
-fromNativeTypeNum DPI_NATIVE_TYPE_NULL = 3016
+dpiNativeTypeToUInt :: DPINativeType -> CUInt
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_INT64 = 3000
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_UINT64 = 3001
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_FLOAT = 3002
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_DOUBLE = 3003
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_BYTES = 3004
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_TIMESTAMP = 3005
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_INTERVAL_DS = 3006
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_INTERVAL_YM = 3007
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_LOB = 3008
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_OBJECT = 3009
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_STMT = 3010
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_BOOLEAN = 3011
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_ROWID = 3012
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_JSON = 3013
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_JSON_OBJECT = 3014
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_JSON_ARRAY = 3015
+dpiNativeTypeToUInt DPI_NATIVE_TYPE_NULL = 3016
 
-toNativeTypeNum :: CUInt -> Maybe DPINativeTypeNum
-toNativeTypeNum 3000 = Just DPI_NATIVE_TYPE_INT64
-toNativeTypeNum 3001 = Just DPI_NATIVE_TYPE_UINT64
-toNativeTypeNum 3002 = Just DPI_NATIVE_TYPE_FLOAT
-toNativeTypeNum 3003 = Just DPI_NATIVE_TYPE_DOUBLE
-toNativeTypeNum 3004 = Just DPI_NATIVE_TYPE_BYTES
-toNativeTypeNum 3005 = Just DPI_NATIVE_TYPE_TIMESTAMP
-toNativeTypeNum 3006 = Just DPI_NATIVE_TYPE_INTERVAL_DS
-toNativeTypeNum 3007 = Just DPI_NATIVE_TYPE_INTERVAL_YM
-toNativeTypeNum 3008 = Just DPI_NATIVE_TYPE_LOB
-toNativeTypeNum 3009 = Just DPI_NATIVE_TYPE_OBJECT
-toNativeTypeNum 3010 = Just DPI_NATIVE_TYPE_STMT
-toNativeTypeNum 3011 = Just DPI_NATIVE_TYPE_BOOLEAN
-toNativeTypeNum 3012 = Just DPI_NATIVE_TYPE_ROWID
-toNativeTypeNum 3013 = Just DPI_NATIVE_TYPE_JSON
-toNativeTypeNum 3014 = Just DPI_NATIVE_TYPE_JSON_OBJECT
-toNativeTypeNum 3015 = Just DPI_NATIVE_TYPE_JSON_ARRAY
-toNativeTypeNum 3016 = Just DPI_NATIVE_TYPE_NULL
-toNativeTypeNum _ = Nothing
+uintToDPINativeType :: CUInt -> Maybe DPINativeType
+uintToDPINativeType 3000 = Just DPI_NATIVE_TYPE_INT64
+uintToDPINativeType 3001 = Just DPI_NATIVE_TYPE_UINT64
+uintToDPINativeType 3002 = Just DPI_NATIVE_TYPE_FLOAT
+uintToDPINativeType 3003 = Just DPI_NATIVE_TYPE_DOUBLE
+uintToDPINativeType 3004 = Just DPI_NATIVE_TYPE_BYTES
+uintToDPINativeType 3005 = Just DPI_NATIVE_TYPE_TIMESTAMP
+uintToDPINativeType 3006 = Just DPI_NATIVE_TYPE_INTERVAL_DS
+uintToDPINativeType 3007 = Just DPI_NATIVE_TYPE_INTERVAL_YM
+uintToDPINativeType 3008 = Just DPI_NATIVE_TYPE_LOB
+uintToDPINativeType 3009 = Just DPI_NATIVE_TYPE_OBJECT
+uintToDPINativeType 3010 = Just DPI_NATIVE_TYPE_STMT
+uintToDPINativeType 3011 = Just DPI_NATIVE_TYPE_BOOLEAN
+uintToDPINativeType 3012 = Just DPI_NATIVE_TYPE_ROWID
+uintToDPINativeType 3013 = Just DPI_NATIVE_TYPE_JSON
+uintToDPINativeType 3014 = Just DPI_NATIVE_TYPE_JSON_OBJECT
+uintToDPINativeType 3015 = Just DPI_NATIVE_TYPE_JSON_ARRAY
+uintToDPINativeType 3016 = Just DPI_NATIVE_TYPE_NULL
+uintToDPINativeType _ = Nothing
 
 foreign import ccall "dpiConn_release" dpiConn_release :: DPIConn -> IO CInt
 foreign import ccall "dpiStmt_release" dpiStmt_release :: DPIStmt -> IO CInt
@@ -818,44 +872,120 @@ stmtRelease
   -> IO ()
 stmtRelease = throwOracleError <=< dpiStmt_release
 
-data DPIData = DPIData
+-- | Used to write values to or read values from a column.
+data DPIData a = DPIData
   { dataIsNull :: CInt
-  , dataValue :: DPIDataBuffer
+  -- ^ If reading, a null value was read. If writing, writes a null value.
+  , dataValue :: a
+  -- ^ The value that was read/will be written, of type 'ReadBuffer' or 'WriteBuffer'.
   }
   deriving stock (Generic, Show, Eq)
   deriving anyclass (GStorable)
 
-newtype DPIDataBuffer = DPIDataBuffer (Ptr DPIDataBuffer)
+-- | An opaque pointer type for the @dpiDataBuffer@ union that we read from.
+-- We cannot write to this in a way that ODPIC could use.
+-- For poking purposes, use 'WriteBuffer'.
+newtype ReadBuffer = ReadBuffer (Ptr ReadBuffer)
   deriving (Show, Eq)
   deriving newtype (Storable)
+
+-- | @dpiDataBuffer@ union that we can write to.
+-- We cannot read from this without a hint as to what type of data it contains.
+data WriteBuffer
+  = AsInt64 Int64
+  | AsUInt64 Word64
+  | AsDouble Double
+  | AsString CString
+  | AsBytes DPIBytes
+  | AsTimestamp DPITimestamp
+  | AsNull
+  deriving (Show, Eq, Generic)
+
+instance Storable WriteBuffer where
+  sizeOf _ = sizeOf (undefined :: DPITimestamp)
+
+  alignment _ = 8
+
+  peek = error "WriteBuffer: peek not supported!"
+
+  poke ptr (AsInt64 intVal) = poke (castPtr ptr) intVal
+  poke ptr (AsUInt64 word64Val) = poke (castPtr ptr) word64Val
+  poke ptr (AsDouble doubleVal) = poke (castPtr ptr) doubleVal
+  poke ptr (AsString cStringVal) = poke (castPtr ptr) cStringVal
+  poke ptr (AsBytes dpiBytesVal) = poke (castPtr ptr) dpiBytesVal
+  poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
+  poke ptr AsNull = poke (castPtr ptr) nullPtr
 
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 
 foreign import ccall "dpiData_getDouble"
-  dpiData_getDouble :: Ptr DPIData -> IO Double
+  dpiData_getDouble :: Ptr (DPIData ReadBuffer) -> IO Double
 
 foreign import ccall "dpiData_getFloat"
-  dpiData_getFloat :: Ptr DPIData -> IO Float
+  dpiData_getFloat :: Ptr (DPIData ReadBuffer) -> IO Float
 
 -- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
 
 foreign import ccall "dpiData_getBytes"
-  dpiData_getBytes :: Ptr DPIData -> IO (Ptr DPIBytes)
+  dpiData_getBytes :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPIBytes)
 
 -- DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
 
 foreign import ccall "dpiData_getTimestamp"
-  dpiData_getTimestamp :: Ptr DPIData -> IO (Ptr DPITimeStamp)
+  dpiData_getTimestamp :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPITimestamp)
 
 foreign import ccall "dpiData_getInt64"
-  dpiData_getInt64 :: Ptr DPIData -> IO Int64
+  dpiData_getInt64 :: Ptr (DPIData ReadBuffer) -> IO Int64
 
 foreign import ccall "dpiData_getUint64"
-  dpiData_getUint64 :: Ptr DPIData -> IO Word64
+  dpiData_getUint64 :: Ptr (DPIData ReadBuffer) -> IO Word64
 
 foreign import ccall "dpiData_getBool"
-  dpiData_getBool :: Ptr DPIData -> IO Int
+  dpiData_getBool :: Ptr (DPIData ReadBuffer) -> IO Int
 
 foreign import ccall "dpiData_getIsNull"
-  dpiData_getIsNull :: Ptr DPIData -> IO Int
+  dpiData_getIsNull :: Ptr (DPIData ReadBuffer) -> IO Int
 
+-- DPI_EXPORT int dpiStmt_bindValueByPos(dpiStmt *stmt, uint32_t pos,
+--         dpiNativeTypeNum nativeTypeNum, dpiData *data);
+
+foreign import ccall "dpiStmt_bindValueByPos"
+  dpiStmt_bindValueByPos
+    :: DPIStmt
+    -- ^ dpiStmt *stmt
+    -> CUInt
+    -- ^ uint32_t pos
+    -> CUInt
+    -- ^ dpiNativeTypeNum nativeTypeNum
+    -> Ptr (DPIData WriteBuffer)
+    -- ^ dpiData *data
+    -> IO CInt
+    -- ^ int
+
+bindValueByPos :: DPIStmt -> Column -> DPINativeType -> (DPIData WriteBuffer) -> IO ()
+bindValueByPos stmt col nativeType val = do
+  alloca $ \dpiData' -> do
+    poke dpiData' val
+    throwOracleError
+      =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (dpiNativeTypeToUInt nativeType) dpiData'
+    pure ()
+
+-- DPI_EXPORT int dpiStmt_getRowCount(dpiStmt *stmt, uint64_t *count);
+--
+foreign import ccall "dpiStmt_getRowCount"
+  dpiStmt_getRowCount
+    :: DPIStmt
+    -- dpiStmt *stmt
+    -> Ptr Word64
+    -- uint64_t *count
+    -> IO CInt
+
+getRowCount :: DPIStmt -> IO Word64
+getRowCount stmt = do
+  alloca $ \rowCount -> do
+    throwOracleError =<< dpiStmt_getRowCount stmt rowCount
+    peek rowCount
+
+-- | Column position, starting with 1 for the first column.
+newtype Column = Column {getColumn :: Word32}
+  deriving newtype (Num, Show)

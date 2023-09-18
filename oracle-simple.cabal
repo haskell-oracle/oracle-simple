@@ -33,7 +33,11 @@ library
   exposed-modules:
     Database.Oracle.Simple
   other-modules:
-    Database.Oracle.Simple.Internal, Database.Oracle.Simple.FromRow, Database.Oracle.Simple.FromField
+      Database.Oracle.Simple.Internal
+    , Database.Oracle.Simple.FromRow
+    , Database.Oracle.Simple.FromField
+    , Database.Oracle.Simple.ToRow
+    , Database.Oracle.Simple.ToField
   build-depends:
     base < 5, derive-storable, text, mtl
   hs-source-dirs:
