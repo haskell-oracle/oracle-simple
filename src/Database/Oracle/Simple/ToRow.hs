@@ -1,22 +1,22 @@
 {-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Database.Oracle.Simple.ToRow where
 
+import Control.Monad
+import Control.Monad.State.Strict
 import qualified Data.List as L
 import Data.Proxy
-import Control.Monad.State.Strict
-import Database.Oracle.Simple.ToField
+import Data.Traversable
+import Data.Word
 import Database.Oracle.Simple.Internal
 import Database.Oracle.Simple.TableInfo
+import Database.Oracle.Simple.ToField
 import Foreign.Ptr
-import Control.Monad
 
-newtype RowWriter a = RowWriter { runRowWriter :: DPIStmt -> StateT Column IO a }
-
-newtype RowWriter' a = RowWriter' { runRowWriter' :: DPIStmt -> a -> StateT Column IO () }
+newtype RowWriter a = RowWriter {runRowWriter :: DPIStmt -> StateT Column IO a}
 
 instance Functor RowWriter where
   fmap f g = RowWriter $ \dpiStmt -> f <$> runRowWriter g dpiStmt
@@ -36,38 +36,37 @@ instance Monad RowWriter where
 class ToRow a where
   toRow :: a -> RowWriter a
 
-instance ToField a => ToField (Maybe a) where
+instance (ToField a) => ToField (Maybe a) where
   toField (Just val) = toField val
   toField Nothing = pure $ AsNull nullPtr
 
-row :: forall a. ToField a => a -> RowWriter a
+row :: forall a. (ToField a) => a -> RowWriter a
 row field = RowWriter $ \stmt -> do
-    col <- modify (+1) >> get
-    liftIO $ do
-      dataValue <- toField field
-      let dataIsNull = case dataValue of
-            (AsNull _) -> 1
-            _ -> 0
-      bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData {..})
-    pure field
+  col <- modify (+ 1) >> get
+  liftIO $ do
+    dataValue <- toField field
+    let dataIsNull = case dataValue of
+          (AsNull _) -> 1
+          _ -> 0
+    bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData{..})
+  pure field
 
-insert :: ToRow a => DPIConn -> String -> [a] -> IO ()
+insert :: (ToRow a) => DPIConn -> String -> [a] -> IO Word64
 insert conn sql rows = do
   stmt <- prepareStmt conn sql
-  forM_ rows $ \row -> do
+  fmap fst <$> forAccumM 0 rows $ \count row -> do
     _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
     execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+    rowsAffected <- getRowCount stmt
+    pure (count + rowsAffected, ())
 
-autoInsert :: forall a. (HasTableInfo a, ToRow a) => DPIConn -> [a] -> IO ()
+autoInsert :: forall a. (HasTableInfo a, ToRow a) => DPIConn -> [a] -> IO Word64
 autoInsert conn rows = do
   let sql = buildInsertStmt (Proxy :: Proxy a)
-  stmt <- prepareStmt conn sql
-  forM_ rows $ \row -> do
-    _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
-    execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+  insert conn (buildInsertStmt (Proxy :: Proxy a)) rows
 
-buildInsertStmt :: HasTableInfo a => Proxy a -> String
+buildInsertStmt :: (HasTableInfo a) => Proxy a -> String
 buildInsertStmt proxy =
   let tname = tableName proxy
       colCount = columnCount proxy
-  in "insert into " <> tname <> " values " <> "(" <> (L.intercalate "," $ fmap (":" <>) $ show <$> [1..colCount]) <> ")"
+   in "insert into " <> tname <> " values " <> "(" <> (L.intercalate "," $ fmap (":" <>) $ show <$> [1 .. colCount]) <> ")"

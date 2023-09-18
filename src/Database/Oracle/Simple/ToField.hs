@@ -1,13 +1,13 @@
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE TypeSynonymInstances #-}
 
 module Database.Oracle.Simple.ToField where
 
-import Database.Oracle.Simple.Internal
-import Data.Text
 import Data.Int
+import Data.Text
+import Database.Oracle.Simple.Internal
 
-class HasDPINativeType a => ToField a where
+class (HasDPINativeType a) => ToField a where
   toField :: a -> IO WriteBuffer
 
 instance ToField Double where
@@ -30,9 +30,9 @@ instance ToField Int where
 
 instance ToField Bool where
   toField = pure . AsBoolean . boolToCBool
-    where boolToCBool False = 0
-          boolToCBool True = 1
+   where
+    boolToCBool False = 0
+    boolToCBool True = 1
 
 instance ToField DPITimestamp where
   toField = pure . AsTimestamp
-

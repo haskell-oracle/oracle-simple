@@ -1,40 +1,38 @@
 {-# LANGUAGE BinaryLiterals #-}
+{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE ViewPatterns #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE RankNTypes #-}
-{-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Database.Oracle.Simple.Internal where
 
-import Database.Oracle.Simple.TableInfo
-import Data.Kind
-import Data.List as L
-import GHC.TypeLits
-import GHC.Generics
-import Control.Monad.State.Strict
 import Control.Exception
 import Control.Monad
+import Control.Monad.State.Strict
 import Data.Coerce
 import Data.IORef
+import Data.Kind
+import Data.List as L
 import Data.Text
 import Data.Typeable
 import Data.Word
+import Database.Oracle.Simple.TableInfo
 import Foreign
 import Foreign.C
 import Foreign.C.String
@@ -43,6 +41,7 @@ import Foreign.Marshal.Utils
 import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
+import GHC.TypeLits
 import System.IO.Unsafe
 
 newtype DPIStmt = DPIStmt (Ptr DPIStmt)
@@ -323,7 +322,6 @@ globalContext :: IORef DPIContext
 {-# NOINLINE globalContext #-}
 globalContext = unsafePerformIO (newIORef =<< createContext)
 
-
 foreign import ccall "getMajorVersion" getMajorVersion :: IO CInt
 foreign import ccall "getMinorVersion" getMinorVersion :: IO CInt
 
@@ -535,7 +533,7 @@ mkDPIBytesUTF8 :: String -> IO DPIBytes
 mkDPIBytesUTF8 str = do
   (dpiBytesPtr, fromIntegral -> dpiBytesLength) <- newCStringLen str
   dpiBytesEncoding <- newCString "UTF-8"
-  pure $ DPIBytes {..}
+  pure $ DPIBytes{..}
 
 -- typedef struct {
 --     int32_t days;
@@ -775,7 +773,7 @@ getQueryValue stmt pos = do
 class HasDPINativeType a where
   dpiNativeType :: Proxy a -> DPINativeType
   -- ^ DPI native type for the Haskell type
-  --
+
 instance HasDPINativeType Double where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_DOUBLE
 
@@ -797,7 +795,7 @@ instance HasDPINativeType Word64 where
 instance HasDPINativeType Bool where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_BOOLEAN
 
-instance HasDPINativeType a => HasDPINativeType (Maybe a) where
+instance (HasDPINativeType a) => HasDPINativeType (Maybe a) where
   dpiNativeType Proxy = dpiNativeType (Proxy @a)
 
 instance HasDPINativeType Int where
@@ -890,12 +888,12 @@ data DPIData a = DPIData
 -- For poking purposes, use 'WriteBuffer'.
 newtype ReadBuffer = ReadBuffer (Ptr ReadBuffer)
   deriving (Show, Eq)
-  deriving newtype Storable
+  deriving newtype (Storable)
 
 -- | @dpiDataBuffer@ union that we can write to.
 -- We cannot read from this without a hint as to what type of data it contains.
-data WriteBuffer =
-  AsBoolean CBool
+data WriteBuffer
+  = AsBoolean CBool
   | AsInt64 Int64
   | AsUInt64 Word64
   | AsFloat Float
@@ -920,8 +918,7 @@ instance Storable WriteBuffer where
   poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
   poke ptr (AsNull nullVal) = poke (castPtr ptr) nullVal
 
-
---instance GStorable DPIDataBuffer
+-- instance GStorable DPIDataBuffer
 
 -- DPI_EXPORT double dpiData_getDouble(dpiData *data);
 
@@ -977,7 +974,24 @@ bindValueByPos stmt col nativeType val = do
       =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (dpiNativeTypeToUInt nativeType) dpiData'
     pure ()
 
+-- DPI_EXPORT int dpiStmt_getRowCount(dpiStmt *stmt, uint64_t *count);
+--
+foreign import ccall "dpiStmt_getRowCount"
+  dpiStmt_getRowCount
+    :: DPIStmt
+    -- dpiStmt *stmt
+    -> Ptr Word64
+    -- uint64_t *count
+    -> IO CInt
+
+-- int
+
+getRowCount :: DPIStmt -> IO Word64
+getRowCount stmt = do
+  alloca $ \rowCount -> do
+    throwOracleError =<< dpiStmt_getRowCount stmt rowCount
+    peek rowCount
+
 -- | Column position, starting with 1 for the first column.
 newtype Column = Column {getColumn :: Word32}
   deriving newtype (Num, Show)
-

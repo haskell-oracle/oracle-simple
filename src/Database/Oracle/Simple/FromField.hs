@@ -1,27 +1,28 @@
-{-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+
 module Database.Oracle.Simple.FromField where
 
-import Data.Word
-import Data.Proxy
-import GHC.Generics
 import Control.Monad
 import Data.Coerce
 import Data.Int
+import Data.Proxy
 import Data.Text
+import Data.Word
 import Database.Oracle.Simple.Internal
 import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Ptr
 import Foreign.Storable.Generic
+import GHC.Generics
 
 -- | A type that may be parsed from a database field.
-class HasDPINativeType a => FromField a where
+class (HasDPINativeType a) => FromField a where
   fromField :: FieldParser a
 
 instance Functor FieldParser where
@@ -54,7 +55,7 @@ instance FromField Bool where
 instance FromField Int where
   fromField = fromIntegral <$> fromField @Int64
 
-instance FromField a => FromField (Maybe a) where
+instance (FromField a) => FromField (Maybe a) where
   fromField = FieldParser $ \ptr -> do
     result <- dpiData_getIsNull ptr
     if result == 1
@@ -73,7 +74,7 @@ instance FromField a => FromField (Maybe a) where
 -- | Encapsulates all information needed to parse a field as a Haskell value.
 newtype FieldParser a = FieldParser
   { readDPIDataBuffer :: ReadDPIBuffer a
-    -- ^ A function that retrieves a value of type @a@ from the DPI data buffer.
+  -- ^ A function that retrieves a value of type @a@ from the DPI data buffer.
   }
 
 instance Applicative FieldParser where
@@ -111,7 +112,7 @@ getWord64 = dpiData_getUint64
 
 -- | Get a boolean value from the data buffer.
 getBool :: ReadDPIBuffer Bool
-getBool ptr = (==1) <$> dpiData_getBool ptr
+getBool ptr = (== 1) <$> dpiData_getBool ptr
 
 -- | Get Text from the data buffer
 getText :: ReadDPIBuffer Text
@@ -121,8 +122,8 @@ getText = fmap pack <$> getString
 getString :: ReadDPIBuffer String
 getString = buildString <=< peek <=< dpiData_getBytes
  where
-   buildString DPIBytes{..} =
-     peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+  buildString DPIBytes{..} =
+    peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
 
 -- | Get a `DPITimestamp` from the buffer
 getTimestamp :: ReadDPIBuffer DPITimestamp
