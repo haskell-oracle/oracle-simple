@@ -22,6 +22,8 @@
 
 module Database.Oracle.Simple.Internal where
 
+import Test.QuickCheck
+import Data.Time
 import Control.Exception
 import Control.Monad
 import Control.Monad.State.Strict
@@ -541,8 +543,33 @@ data DPITimestamp = DPITimestamp
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+instance Arbitrary DPITimestamp where
+  arbitrary = do
+    year           <- choose (1000, 2023)
+    month          <- choose (1, 12)
+    day            <- choose (1, 28)
+    hour           <- choose (1, 12)
+    minute         <- choose (1, 59)
+    second         <- choose (1, 59)
+    fsecond        <- choose (0, 100000)
+    tzHourOffset   <- choose (0, 0) -- TODO: support
+    tzMinuteOffset <- choose (0, 0) -- TODO: support
+    pure DPITimestamp {..}
+
 instance HasDPINativeType DPITimestamp where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
+
+instance HasDPINativeType UTCTime where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
+
+-- struct dpiAppContext {
+--     const char *namespaceName;
+--     uint32_t namespaceNameLength;
+--     const char *name;
+--     uint32_t nameLength;
+--     const char *value;
+--     uint32_t valueLength;
+-- };
 
 data DPIAppContext = DPIAppContext
   { namespaceName :: CString

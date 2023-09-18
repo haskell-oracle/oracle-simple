@@ -1,6 +1,10 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main where
 
+import Control.Monad.IO.Class (liftIO)
+import Test.Hspec.QuickCheck
+import Test.QuickCheck
+import Test.QuickCheck.Instances ()
 import Data.Time
 import Test.Hspec
 
@@ -27,3 +31,8 @@ spec = do
     describe "Connection tests" $ do
       it "Should check connetion health" $ \conn ->
         (`shouldBe` True) =<< isHealthy conn
+
+      it "Should roundtrip DPITimestamp through UTCTime" $ \conn -> do
+        property $ \dpiTimestamp -> do
+          let k = (dpiTimeStampToUTCTime dpiTimestamp)
+          utcTimeToDPITimestamp k `shouldBe` dpiTimestamp
