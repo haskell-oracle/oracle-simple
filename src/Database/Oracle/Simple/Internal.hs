@@ -706,14 +706,14 @@ foreign import ccall "dpiStmt_execute"
 --         uint32_t *numQueryColumns);
 
 -- | Execute a statement.
-execute
+dpiExecute
   :: DPIStmt
   -- ^ Statement to be executed
   -> DPIModeExec
   -- ^ Execution mode
   -> IO CUInt
   -- ^ query columns
-execute stmt mode =
+dpiExecute stmt mode =
   alloca $ \rowsPtr -> do
     throwOracleError =<< dpiStmt_execute stmt (toDPIModeExec mode) rowsPtr
     peek rowsPtr

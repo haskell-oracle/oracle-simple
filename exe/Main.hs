@@ -7,6 +7,7 @@
 {-# LANGUAGE RecordWildCards #-}
 module Main where
 
+import Data.Functor.Identity
 import Data.Text (Text)
 import Database.Oracle.Simple
 import GHC.Generics
@@ -16,22 +17,35 @@ main :: IO ()
 main = do
   conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
 
-  -- selecting
+  -- querying
   let selectStmt = "select count(*), sysdate, 'text goes here', 125.24, TO_BINARY_FLOAT ('3.14'), CAST(null AS NUMBER(10,2)) from dual"
-  rows <- query @ReturnedRow conn (selectStmt <> " UNION ALL " <> selectStmt)
+  rows <- query_ @ReturnedRow conn (selectStmt <> " UNION ALL " <> selectStmt)
   mapM_ print rows
 
+  putStrLn ""
+
   -- inserting
-  -- let insertStmt = "insert into sample_table values (:1, :2, :3, :4)"
-  -- rowsAffected <- insert
-  --   conn
-  --   insertStmt
-  --   [ (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
-  --   , (SampleTable "d002" "Some more text" Nothing (Just 10))
-  --   , (SampleTable "d003" "Hello world" (Just 3.14) Nothing)
-  --   , (SampleTable "d004" "Goodbye!" Nothing Nothing)
-  --   ]
-  -- putStrLn $ "Rows affected: " <> show rowsAffected
+  let insertStmt = "insert into sample_table values (:1, :2, :3, :4)"
+  rowsAffected <- executeMany
+   conn
+   insertStmt
+   [ (SampleTable "d001" "Some text!" (Just 9.99) (Just 64))
+   , (SampleTable "d002" "Some more text" Nothing (Just 10))
+   , (SampleTable "d003" "Hello world" (Just 3.14) Nothing)
+   , (SampleTable "d004" "Goodbye!" Nothing Nothing)
+   ]
+  putStrLn $ "Rows affected: " <> show rowsAffected
+
+  -- querying with where clause
+  let selectWhereStmt = "select * from sample_table where sample_string=:1 and sample_integer=:2"
+  rows <- query @SampleTable conn selectWhereStmt ("d001" :: String, 64 :: Int)
+  mapM_ print rows
+
+  -- updating
+  let updateStmt = "update sample_table st set st.sample_double=:1 where st.sample_string=:2"
+  rowsAffected <- execute conn updateStmt (Just @Double 123.45, "d002" :: String)
+  putStrLn $ "Rows affected: " <> show rowsAffected
+
 
 newtype RowCount = RowCount { getRowCount :: Double }
   deriving stock (Show)
@@ -63,6 +77,7 @@ data SampleTable =
   , sampleInteger :: Maybe Int
   } deriving stock (Show, Generic)
     deriving anyclass ToRow
+    deriving anyclass FromRow
 
 -- instance ToRow SampleTable where
 --   toRow SampleTable{..} = do
