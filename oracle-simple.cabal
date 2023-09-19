@@ -19,13 +19,13 @@ flag default_paths
   description:
     Use default system paths for odpic
 
-executable example
+executable tests
   main-is:
     Main.hs
   build-depends:
-    base < 5, oracle-simple, text
+    base < 5, oracle-simple, text, time, hspec
   hs-source-dirs:
-    exe
+    test
   default-language:
     Haskell2010
 
