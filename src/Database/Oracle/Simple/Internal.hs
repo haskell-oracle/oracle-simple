@@ -97,6 +97,10 @@ connect params = do
     peek connPtr -- error "createConn: oh no" -- throwIO ConnectionException
     -- TODO: fetch errorInfo struct... somehow?
 
+-- | Brackets a computation between opening and closing a connection.
+withConnect :: ConnectionParams -> (Connection -> IO c) -> IO c
+withConnect params = bracket (connect params) (close >> release)
+
 -- DPI_EXPORT int dpiConn_create(const dpiContext *context, const char *userName,
 --         uint32_t userNameLength, const char *password, uint32_t passwordLength,
 --         const char *connectString, uint32_t connectStringLength,
@@ -213,16 +217,19 @@ foreign import ccall "dpiConn_close"
     -> IO Int
 
 close :: Connection -> IO Int
-close conn = fromIntegral <$>
-  dpiConn_close conn (toDpiModeConnClose DPI_MODE_CONN_CLOSE_DEFAULT)
-    nullPtr 0
+close conn =
+  fromIntegral
+    <$> dpiConn_close
+      conn
+      (toDpiModeConnClose DPI_MODE_CONN_CLOSE_DEFAULT)
+      nullPtr
+      0
 
 fromDPIModeConnClose :: CUInt -> Maybe DPIPurity
 fromDPIModeConnClose 0 = Just DPI_PURITY_DEFAULT
 fromDPIModeConnClose 1 = Just DPI_PURITY_NEW
 fromDPIModeConnClose 2 = Just DPI_PURITY_SELF
 fromDPIModeConnClose _ = Nothing
-
 
 fromDPIPurity :: CUInt -> Maybe DPIPurity
 fromDPIPurity 0 = Just DPI_PURITY_DEFAULT
@@ -737,14 +744,14 @@ foreign import ccall "dpiStmt_execute"
 --         uint32_t *numQueryColumns);
 
 -- | Execute a statement.
-execute
+dpiExecute
   :: DPIStmt
   -- ^ Statement to be executed
   -> DPIModeExec
   -- ^ Execution mode
   -> IO CUInt
   -- ^ query columns
-execute stmt mode =
+dpiExecute stmt mode =
   alloca $ \rowsPtr -> do
     throwOracleError =<< dpiStmt_execute stmt (toDPIModeExec mode) rowsPtr
     peek rowsPtr

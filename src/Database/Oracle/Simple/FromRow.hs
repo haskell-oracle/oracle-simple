@@ -1,4 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -11,12 +10,14 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Database.Oracle.Simple.FromRow where
 
 import Control.Exception hiding (TypeError)
 import Control.Monad
 import Control.Monad.State.Strict
+import Data.Functor.Identity
 import Data.Proxy
 import Data.Word
 import Database.Oracle.Simple.FromField
@@ -28,6 +29,44 @@ class FromRow a where
   fromRow :: RowParser a
   default fromRow :: (GFromRow (Rep a), Generic a) => RowParser a
   fromRow = to <$> gFromRow
+
+instance FromField a => FromRow (Identity a)
+
+instance (FromField a, FromField b) => FromRow (a, b)
+
+instance (FromField a, FromField b, FromField c) => FromRow (a, b, c)
+
+instance (FromField a, FromField b, FromField c, FromField d) => FromRow (a, b, c, d)
+
+instance (FromField a, FromField b, FromField c, FromField d, FromField e) => FromRow (a, b, c, d, e)
+
+instance (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f) => FromRow (a, b, c, d, e, f)
+
+instance
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g)
+  => FromRow (a, b, c, d, e, f, g)
+
+instance
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h)
+  => FromRow (a, b, c, d, e, f, g, h)
+
+instance
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h, FromField i)
+  => FromRow (a, b, c, d, e, f, g, h, i)
+
+instance
+  ( FromField a
+  , FromField b
+  , FromField c
+  , FromField d
+  , FromField e
+  , FromField f
+  , FromField g
+  , FromField h
+  , FromField i
+  , FromField j
+  )
+  => FromRow (a, b, c, d, e, f, g, h, i, j)
 
 class GFromRow f where
   gFromRow :: RowParser (f a)
@@ -109,16 +148,3 @@ instance Exception RowParseError where
       <> " but got "
       <> show gotType
       <> "."
-
-query :: (FromRow row) => Connection -> String -> IO [row]
-query conn sql = do
-  stmt <- prepareStmt conn sql
-  execute stmt DPI_MODE_EXEC_DEFAULT
-  found <- fetch stmt
-  loop stmt [] found
- where
-  loop stmt xs n | n < 1 = pure xs
-  loop stmt xs _ = do
-    tsVal <- getRow stmt
-    found <- fetch stmt
-    loop stmt (xs ++ [tsVal]) found

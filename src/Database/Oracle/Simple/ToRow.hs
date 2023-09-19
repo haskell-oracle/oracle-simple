@@ -15,6 +15,7 @@ module Database.Oracle.Simple.ToRow where
 
 import           Control.Monad
 import           Control.Monad.State.Strict
+import           Data.Functor.Identity
 import qualified Data.List                       as L
 import           Data.Proxy
 import           Data.Traversable
@@ -46,6 +47,29 @@ class ToRow a where
   toRow :: a -> RowWriter ()
   default toRow :: (GToRow (Rep a), Generic a) => a -> RowWriter ()
   toRow = gToRow . from
+
+instance ToField a => ToRow (Identity a)
+
+instance (ToField a, ToField b) => ToRow (a, b)
+
+instance (ToField a, ToField b, ToField c) => ToRow (a, b, c)
+
+instance (ToField a, ToField b, ToField c, ToField d) => ToRow (a, b, c, d)
+
+instance (ToField a, ToField b, ToField c, ToField d, ToField e) => ToRow (a, b, c, d, e)
+
+instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f) => ToRow (a, b, c, d, e, f)
+
+instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g) => ToRow (a, b, c, d, e, f, g)
+
+instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h)
+  => ToRow (a, b, c, d, e, f, g, h)
+
+instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i)
+  => ToRow (a, b, c, d, e, f, g, h, i)
+
+instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i, ToField j)
+  => ToRow (a, b, c, d, e, f, g, h, i, j)
 
 class GToRow f where
   gToRow :: f a -> RowWriter ()
@@ -81,14 +105,3 @@ writeField field = RowWriter $ \stmt -> do
           AsNull -> 1
           _ -> 0
     bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData{..})
-
-insert :: (ToRow a) => Connection -> String -> [a] -> IO Word64
-insert conn sql rows = do
-  stmt <- prepareStmt conn sql
-  foldM (go stmt) 0 rows
-    where
-      go stmt !totalRowsAffected row = do
-        _ <- evalStateT (runRowWriter (toRow row) stmt) (Column 0)
-        execute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
-        rowsAffected <- getRowCount stmt
-        pure (totalRowsAffected + rowsAffected)

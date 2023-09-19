@@ -38,6 +38,8 @@ library
     , Database.Oracle.Simple.FromField
     , Database.Oracle.Simple.ToRow
     , Database.Oracle.Simple.ToField
+    , Database.Oracle.Simple.Query
+    , Database.Oracle.Simple.Execute
   build-depends:
     base < 5, derive-storable, text, mtl
   hs-source-dirs:
