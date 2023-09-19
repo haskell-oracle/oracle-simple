@@ -1,4 +1,4 @@
-name: oracle-simple build
+name: oracle-simple tests
 on:
   push:
     branches:
@@ -17,5 +17,5 @@ jobs:
        run: docker-compose up -d
      - name: build
        run: nix-build
-     - name: example
-       run: ./result/bin/example
+     - name: test
+       run: ./result/bin/tests
