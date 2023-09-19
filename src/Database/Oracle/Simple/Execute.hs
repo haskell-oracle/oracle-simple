@@ -37,7 +37,7 @@ execute_ conn sql = do
 -- Returns the number of rows affected. If the list of parameters is empty, the function will simply
 -- return 0 without issuing the query to the backend.
 executeMany :: (ToRow a) => Connection -> String -> [a] -> IO Word64
-executeMany coon sql [] = pure 0
+executeMany conn sql [] = pure 0
 executeMany conn sql params = do
   stmt <- prepareStmt conn sql
   foldM (go stmt) 0 params

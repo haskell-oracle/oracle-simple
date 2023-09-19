@@ -97,6 +97,10 @@ connect params = do
     peek connPtr -- error "createConn: oh no" -- throwIO ConnectionException
     -- TODO: fetch errorInfo struct... somehow?
 
+-- | Brackets a computation between opening and closing a connection.
+withConnect :: ConnectionParams -> (Connection -> IO c) -> IO c
+withConnect params = bracket (connect params) (close >> release)
+
 -- DPI_EXPORT int dpiConn_create(const dpiContext *context, const char *userName,
 --         uint32_t userNameLength, const char *password, uint32_t passwordLength,
 --         const char *connectString, uint32_t connectStringLength,
