@@ -97,8 +97,8 @@ connect params = do
     peek connPtr
 
 -- | Brackets a computation between opening and closing a connection.
-withConnect :: ConnectionParams -> (Connection -> IO c) -> IO c
-withConnect params = bracket (connect params) (close >> release)
+withConnection :: ConnectionParams -> (Connection -> IO c) -> IO c
+withConnection params = bracket (connect params) (close >> release)
 
 foreign import ccall unsafe "dpiConn_create"
   dpiConn_create
