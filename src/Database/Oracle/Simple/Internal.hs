@@ -94,18 +94,11 @@ connect params = do
         nullPtr
         nullPtr
         connPtr
-    peek connPtr -- error "createConn: oh no" -- throwIO ConnectionException
-    -- TODO: fetch errorInfo struct... somehow?
+    peek connPtr
 
 -- | Brackets a computation between opening and closing a connection.
 withConnect :: ConnectionParams -> (Connection -> IO c) -> IO c
 withConnect params = bracket (connect params) (close >> release)
-
--- DPI_EXPORT int dpiConn_create(const dpiContext *context, const char *userName,
---         uint32_t userNameLength, const char *password, uint32_t passwordLength,
---         const char *connectString, uint32_t connectStringLength,
---         const dpiCommonCreateParams *commonParams,
---         dpiConnCreateParams *createParams, dpiConn **conn);
 
 foreign import ccall unsafe "dpiConn_create"
   dpiConn_create
@@ -237,31 +230,6 @@ fromDPIPurity 1 = Just DPI_PURITY_NEW
 fromDPIPurity 2 = Just DPI_PURITY_SELF
 fromDPIPurity _ = Nothing
 
--- struct dpiConnCreateParams {
---     dpiAuthMode authMode;
---     const char *connectionClass;
---     uint32_t connectionClassLength;
---     dpiPurity purity;
---     const char *newPassword;
---     uint32_t newPasswordLength;
---     dpiAppContext *appContext;
---     uint32_t numAppContext;
---     int externalAuth;
---     void *externalHandle;
---     dpiPool *pool;
---     const char *tag;
---     uint32_t tagLength;
---     int matchAnyTag;
---     const char *outTag;
---     uint32_t outTagLength;
---     int outTagFound;
---     dpiShardingKeyColumn *shardingKeyColumns;
---     uint8_t numShardingKeyColumns;
---     dpiShardingKeyColumn *superShardingKeyColumns;
---     uint8_t numSuperShardingKeyColumns;
---     int outNewSession;
--- };
-
 data ConnectionCreateParams = ConnectionCreateParams
   { authMode :: DPIAuthMode
   , connectionClass :: CString
@@ -288,18 +256,6 @@ data ConnectionCreateParams = ConnectionCreateParams
   }
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
-
--- struct dpiCommonCreateParams {
---     dpiCreateMode createMode;
---     const char *encoding;
---     const char *nencoding;
---     const char *edition;
---     ui nt32_t editionLength;
---     const char *driverName;
---     uint32_t driverNameLength;
---     int sodaMetadataCache;
---     uint32_t stmtCacheSize;
--- };
 
 data DPICommonCreateParams = DPICommonCreateParams
   { createMode :: DPICreateMode
@@ -361,10 +317,6 @@ globalContext = unsafePerformIO (newIORef =<< createContext)
 
 foreign import ccall "getMajorVersion" getMajorVersion :: IO CInt
 foreign import ccall "getMinorVersion" getMinorVersion :: IO CInt
-
--- dpiContext_create(majorVersion, minorVersion, context, errorInfo) \
---     dpiContext_createWithParams(majorVersion, minorVersion, NULL, context, \
---             errorInfo)
 
 createContext
   :: IO DPIContext
@@ -448,15 +400,6 @@ throwOracleError returnCode = do
 
 instance Exception OracleError
 
--- struct dpiVersionInfo {
---     int versionNum;
---     int releaseNum;
---     int updateNum;
---     int portReleaseNum;
---     int portUpdateNum;
---     uint32_t fullVersionNum;
--- };
-
 data VersionInfo = VersionInfo
   { versionNum :: CInt
   , releaseNum :: CInt
@@ -467,9 +410,6 @@ data VersionInfo = VersionInfo
   }
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
-
--- DPI_EXPORT int dpiContext_getClientVersion(const dpiContext *context,
---         dpiVersionInfo *versionInfo);
 
 getClientVersion
   :: IO VersionInfo
@@ -486,10 +426,6 @@ foreign import ccall "dpiContext_getClientVersion"
     :: DPIContext
     -> Ptr VersionInfo
     -> IO Int
-
--- DPI_EXPORT int dpiConn_getServerVersion(dpiConn *conn,
---         const char **releaseString, uint32_t *releaseStringLength,
---         dpiVersionInfo *versionInfo);
 
 foreign import ccall "dpiConn_getServerVersion"
   dpiContext_getServerVersion
@@ -512,9 +448,6 @@ getServerVersion con versionInfo = do
         then (peekCString <=< peek) releaseStringPtr
         else error $ show status <> " oh no!"
 
--- DPI_EXPORT int dpiContext_initCommonCreateParams(const dpiContext *context,
---        dpiCommonCreateParams *params);
-
 foreign import ccall "dpiContext_initCommonCreateParams"
   dpiContext_initCommonCreateParams
     :: DPIContext
@@ -531,9 +464,6 @@ withCommonCreateParams f = do
     unless (status == 0) $ do
       error $ "common create params isn't 0" <> show status
     f =<< peek commonCreateParamsPtr
-
--- DPI_EXPORT int dpiContext_initConnCreateParams(const dpiContext *context,
---        dpiConnCreateParams *params);
 
 foreign import ccall "dpiContext_initConnCreateParams"
   dpiContext_initConnCreateParams
@@ -552,12 +482,6 @@ withConnCreateParams f = do
       error $ "conn create params isn't 0" <> show status
     f =<< peek connCreateParamsPtr
 
--- typedef struct {
---     char *ptr;
---     uint32_t length;
---     const char *encoding;
--- } dpiBytes;
-
 data DPIBytes = DPIBytes
   { dpiBytesPtr :: CString
   , dpiBytesLength :: CUInt
@@ -572,14 +496,6 @@ mkDPIBytesUTF8 str = do
   dpiBytesEncoding <- newCString "UTF-8"
   pure $ DPIBytes{..}
 
--- typedef struct {
---     int32_t days;
---     int32_t hours;
---     int32_t minutes;
---     int32_t seconds;
---     int32_t fseconds;
--- } dpiIntervalDS;
-
 data DPIIntervalDS = DPIIntervalDS
   { days :: CInt
   , hours :: CInt
@@ -590,29 +506,12 @@ data DPIIntervalDS = DPIIntervalDS
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
--- typedef struct {
---     int32_t years;
---     int32_t months;
--- } dpiIntervalYM;
-
 data DPIIntervalYM = DPIIntervalYM
   { years :: CInt
   , months :: CInt
   }
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
-
--- typedef struct {
---     int16_t year;
---     uint8_t month;
---     uint8_t day;
---     uint8_t hour;
---     uint8_t minute;
---     uint8_t second;
---     uint32_t fsecond;
---     int8_t tzHourOffset;
---     int8_t tzMinuteOffset;
--- } dpiTimestamp;
 
 data DPITimestamp = DPITimestamp
   { year :: Int16
@@ -631,15 +530,6 @@ data DPITimestamp = DPITimestamp
 instance HasDPINativeType DPITimestamp where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
 
--- struct dpiAppContext {
---     const char *namespaceName;
---     uint32_t namespaceNameLength;
---     const char *name;
---     uint32_t nameLength;
---     const char *value;
---     uint32_t valueLength;
--- };
-
 data DPIAppContext = DPIAppContext
   { namespaceName :: CString
   , namespaceNameLength :: CUInt
@@ -650,14 +540,6 @@ data DPIAppContext = DPIAppContext
   }
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
-
--- struct dpiContextCreateParams {
---     const char *defaultDriverName;
---     const char *defaultEncoding;
---     const char *loadErrorUrl;
---     const char *oracleClientLibDir;
---     const char *oracleClientConfigDir;
--- };
 
 data DPIContextCreateParams = DPIContextCreateParams
   { defaultDriverName :: CString
@@ -702,8 +584,6 @@ prepareStmt conn sql = do
     throwOracleError status
     peek stmtPtr
 
--- typedef uint32_t dpiExecMode;
-
 data DPIModeExec
   = DPI_MODE_EXEC_DEFAULT -- 0x00000000
   | DPI_MODE_EXEC_DESCRIBE_ONLY -- 0x00000010
@@ -730,18 +610,12 @@ fromDPIModeExec 0x00000100 = Just DPI_MODE_EXEC_PARSE_ONLY
 fromDPIModeExec 0x00100000 = Just DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS
 fromDPIModeExec _ = Nothing
 
--- DPI_EXPORT int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode,
---        uint32_t *numQueryColumns);
-
 foreign import ccall "dpiStmt_execute"
   dpiStmt_execute
     :: DPIStmt
     -> CUInt
     -> Ptr CUInt
     -> IO CInt
-
--- DPI_EXPORT int dpiStmt_execute(dpiStmt *stmt, dpiExecMode mode,
---         uint32_t *numQueryColumns);
 
 -- | Execute a statement.
 dpiExecute
@@ -755,9 +629,6 @@ dpiExecute stmt mode =
   alloca $ \rowsPtr -> do
     throwOracleError =<< dpiStmt_execute stmt (toDPIModeExec mode) rowsPtr
     peek rowsPtr
-
--- DPI_EXPORT int dpiStmt_fetch(dpiStmt *stmt, int *found,
---      uint32_t *bufferRowIndex);
 
 foreign import ccall "dpiStmt_fetch"
   dpiStmt_fetch
@@ -776,9 +647,6 @@ fetch stmt =
     alloca $ \foundPtr -> do
       throwOracleError =<< dpiStmt_fetch stmt foundPtr bufferRowIdxPtr
       peek foundPtr
-
--- DPI_EXPORT int dpiStmt_getQueryValue(dpiStmt *stmt, uint32_t pos,
---        dpiNativeTypeNum *nativeTypeNum, dpiData **data);
 
 foreign import ccall "dpiStmt_getQueryValue"
   dpiStmt_getQueryValue
@@ -954,20 +822,14 @@ instance Storable WriteBuffer where
   poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
   poke ptr AsNull = poke (castPtr ptr) nullPtr
 
--- DPI_EXPORT double dpiData_getDouble(dpiData *data);
-
 foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr (DPIData ReadBuffer) -> IO Double
 
 foreign import ccall "dpiData_getFloat"
   dpiData_getFloat :: Ptr (DPIData ReadBuffer) -> IO Float
 
--- DPI_EXPORT dpiBytes *dpiData_getBytes(dpiData *data);
-
 foreign import ccall "dpiData_getBytes"
   dpiData_getBytes :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPIBytes)
-
--- DPI_EXPORT dpiTimestamp *dpiData_getTimestamp(dpiData *data);
 
 foreign import ccall "dpiData_getTimestamp"
   dpiData_getTimestamp :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPITimestamp)
@@ -983,9 +845,6 @@ foreign import ccall "dpiData_getBool"
 
 foreign import ccall "dpiData_getIsNull"
   dpiData_getIsNull :: Ptr (DPIData ReadBuffer) -> IO Int
-
--- DPI_EXPORT int dpiStmt_bindValueByPos(dpiStmt *stmt, uint32_t pos,
---         dpiNativeTypeNum nativeTypeNum, dpiData *data);
 
 foreign import ccall "dpiStmt_bindValueByPos"
   dpiStmt_bindValueByPos
@@ -1008,14 +867,10 @@ bindValueByPos stmt col nativeType val = do
       =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (dpiNativeTypeToUInt nativeType) dpiData'
     pure ()
 
--- DPI_EXPORT int dpiStmt_getRowCount(dpiStmt *stmt, uint64_t *count);
---
 foreign import ccall "dpiStmt_getRowCount"
   dpiStmt_getRowCount
     :: DPIStmt
-    -- dpiStmt *stmt
     -> Ptr Word64
-    -- uint64_t *count
     -> IO CInt
 
 getRowCount :: DPIStmt -> IO Word64
@@ -1028,13 +883,9 @@ getRowCount stmt = do
 newtype Column = Column {getColumn :: Word32}
   deriving newtype (Num, Show)
 
--- DPI_EXPORT int dpiConn_ping(dpiConn *conn);
-
 foreign import ccall "dpiConn_ping"
   dpiConn_ping
     :: Connection
-    -- dpiStmt *stmt
-    -- uint64_t *count
     -> IO CInt
 
 -- | Ping the connection to see if it is still alive
