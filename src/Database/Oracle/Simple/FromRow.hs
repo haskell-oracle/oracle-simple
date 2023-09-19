@@ -110,7 +110,7 @@ instance Exception RowParseError where
       <> show gotType
       <> "."
 
-query :: (FromRow row) => DPIConn -> String -> IO [row]
+query :: (FromRow row) => Connection -> String -> IO [row]
 query conn sql = do
   stmt <- prepareStmt conn sql
   execute stmt DPI_MODE_EXEC_DEFAULT
