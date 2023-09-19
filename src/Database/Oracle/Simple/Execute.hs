@@ -1,11 +1,19 @@
 {-# LANGUAGE BangPatterns #-}
+
 module Database.Oracle.Simple.Execute where
 
 import Control.Monad (foldM)
 import Control.Monad.State.Strict (evalStateT)
 import Data.Word (Word64)
-import Database.Oracle.Simple.ToRow (ToRow, RowWriter(runRowWriter), toRow)
-import Database.Oracle.Simple.Internal (Connection, prepareStmt, Column(Column), dpiExecute, DPIModeExec(DPI_MODE_EXEC_COMMIT_ON_SUCCESS), getRowCount)
+import Database.Oracle.Simple.Internal
+  ( Column (Column)
+  , Connection
+  , DPIModeExec (DPI_MODE_EXEC_COMMIT_ON_SUCCESS)
+  , dpiExecute
+  , getRowCount
+  , prepareStmt
+  )
+import Database.Oracle.Simple.ToRow (RowWriter (runRowWriter), ToRow, toRow)
 
 -- | Execute an INSERT, UPDATE, or other SQL query that is not expected to return results.
 -- Returns the number of rows affected.
@@ -33,9 +41,9 @@ executeMany coon sql [] = pure 0
 executeMany conn sql params = do
   stmt <- prepareStmt conn sql
   foldM (go stmt) 0 params
-    where
-      go stmt !totalRowsAffected param = do
-        _ <- evalStateT (runRowWriter (toRow param) stmt) (Column 0)
-        dpiExecute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
-        rowsAffected <- getRowCount stmt
-        pure (totalRowsAffected + rowsAffected)
+ where
+  go stmt !totalRowsAffected param = do
+    _ <- evalStateT (runRowWriter (toRow param) stmt) (Column 0)
+    dpiExecute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+    rowsAffected <- getRowCount stmt
+    pure (totalRowsAffected + rowsAffected)

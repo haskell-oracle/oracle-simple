@@ -1,12 +1,19 @@
 module Database.Oracle.Simple.Query where
 
-import GHC.Generics (Generic)
 import Control.Monad.State.Strict (evalStateT)
-import Database.Oracle.Simple.ToField (ToField)
 import Database.Oracle.Simple.FromField (FromField)
-import Database.Oracle.Simple.ToRow (ToRow, RowWriter(..), toRow)
 import Database.Oracle.Simple.FromRow (FromRow, getRow)
-import Database.Oracle.Simple.Internal (Connection, prepareStmt, dpiExecute, DPIModeExec(..), fetch, Column(..))
+import Database.Oracle.Simple.Internal
+  ( Column (Column)
+  , Connection
+  , DPIModeExec (DPI_MODE_EXEC_DEFAULT)
+  , dpiExecute
+  , fetch
+  , prepareStmt
+  )
+import Database.Oracle.Simple.ToField (ToField)
+import Database.Oracle.Simple.ToRow (RowWriter (runRowWriter), ToRow, toRow)
+import GHC.Generics (Generic)
 
 -- | Perform a SELECT or other SQL query that is expected to return results.
 -- All results are retrieved and converted before this function ends.

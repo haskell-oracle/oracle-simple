@@ -213,16 +213,19 @@ foreign import ccall "dpiConn_close"
     -> IO Int
 
 close :: Connection -> IO Int
-close conn = fromIntegral <$>
-  dpiConn_close conn (toDpiModeConnClose DPI_MODE_CONN_CLOSE_DEFAULT)
-    nullPtr 0
+close conn =
+  fromIntegral
+    <$> dpiConn_close
+      conn
+      (toDpiModeConnClose DPI_MODE_CONN_CLOSE_DEFAULT)
+      nullPtr
+      0
 
 fromDPIModeConnClose :: CUInt -> Maybe DPIPurity
 fromDPIModeConnClose 0 = Just DPI_PURITY_DEFAULT
 fromDPIModeConnClose 1 = Just DPI_PURITY_NEW
 fromDPIModeConnClose 2 = Just DPI_PURITY_SELF
 fromDPIModeConnClose _ = Nothing
-
 
 fromDPIPurity :: CUInt -> Maybe DPIPurity
 fromDPIPurity 0 = Just DPI_PURITY_DEFAULT

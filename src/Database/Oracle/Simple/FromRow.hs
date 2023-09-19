@@ -1,4 +1,3 @@
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DerivingStrategies #-}
@@ -11,15 +10,16 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Database.Oracle.Simple.FromRow where
 
 import Control.Exception hiding (TypeError)
 import Control.Monad
 import Control.Monad.State.Strict
+import Data.Functor.Identity
 import Data.Proxy
 import Data.Word
-import Data.Functor.Identity
 import Database.Oracle.Simple.FromField
 import Database.Oracle.Simple.Internal
 import GHC.Generics
@@ -42,15 +42,30 @@ instance (FromField a, FromField b, FromField c, FromField d, FromField e) => Fr
 
 instance (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f) => FromRow (a, b, c, d, e, f)
 
-instance (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g) => FromRow (a, b, c, d, e, f, g)
+instance
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g)
+  => FromRow (a, b, c, d, e, f, g)
 
-instance (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h)
+instance
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h)
   => FromRow (a, b, c, d, e, f, g, h)
 
-instance (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h, FromField i)
+instance
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h, FromField i)
   => FromRow (a, b, c, d, e, f, g, h, i)
 
-instance (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h, FromField i, FromField j)
+instance
+  ( FromField a
+  , FromField b
+  , FromField c
+  , FromField d
+  , FromField e
+  , FromField f
+  , FromField g
+  , FromField h
+  , FromField i
+  , FromField j
+  )
   => FromRow (a, b, c, d, e, f, g, h, i, j)
 
 class GFromRow f where
