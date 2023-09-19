@@ -14,12 +14,16 @@ import Data.Proxy
 
 main :: IO ()
 main = do
-  conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
+  conn <- connect (ConnectionParams "username" "password" "localhost/XEPDB1")
 
   -- selecting
   let selectStmt = "select count(*), sysdate, 'text goes here', 125.24, TO_BINARY_FLOAT ('3.14'), CAST(null AS NUMBER(10,2)) from dual"
   rows <- query @ReturnedRow conn (selectStmt <> " UNION ALL " <> selectStmt)
   mapM_ print rows
+  print =<< ping conn
+  close conn
+  print =<< ping conn
+  release conn
 
   -- inserting
   -- let insertStmt = "insert into sample_table values (:1, :2, :3, :4)"

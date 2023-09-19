@@ -82,7 +82,7 @@ writeField field = RowWriter $ \stmt -> do
           _ -> 0
     bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData{..})
 
-insert :: (ToRow a) => DPIConn -> String -> [a] -> IO Word64
+insert :: (ToRow a) => Connection -> String -> [a] -> IO Word64
 insert conn sql rows = do
   stmt <- prepareStmt conn sql
   foldM (go stmt) 0 rows

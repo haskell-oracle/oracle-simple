@@ -47,11 +47,11 @@ newtype DPIStmt = DPIStmt (Ptr DPIStmt)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
-newtype DPIConn = DPIConn (Ptr DPIConn)
+newtype Connection = Connection (Ptr Connection)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
-newtype Conn = Conn (ForeignPtr DPIConn)
+newtype Conn = Conn (ForeignPtr Connection)
   deriving (Show, Eq)
 
 newtype DPIPool = DPIPool (Ptr DPIPool)
@@ -73,10 +73,10 @@ data ConnectionParams = ConnectionParams
   }
   deriving (Eq, Ord, Show)
 
-createConn
+connect
   :: ConnectionParams
-  -> IO DPIConn
-createConn params = do
+  -> IO Connection
+connect params = do
   ctx <- readIORef globalContext
   alloca $ \connPtr -> do
     (userCString, fromIntegral -> userLen) <- newCStringLen (user params)
@@ -121,9 +121,9 @@ foreign import ccall unsafe "dpiConn_create"
     -- ^ uint32_t conn length
     -> Ptr DPICommonCreateParams
     -- ^ const dpiCommonCreateParams *commonParams
-    -> Ptr DPIConnCreateParams
+    -> Ptr ConnectionCreateParams
     -- ^ const dpiConnCreateParams *createParams
-    -> Ptr DPIConn
+    -> Ptr Connection
     -- ^ dpi * conn
     -> IO CInt
 
@@ -193,6 +193,37 @@ instance Storable DPIPurity where
 toDPIPurity :: DPIPurity -> CUInt
 toDPIPurity = fromIntegral . fromEnum
 
+data DPIModeConnClose
+  = DPI_MODE_CONN_CLOSE_DEFAULT --                0x0000
+  | DPI_MODE_CONN_CLOSE_DROP    --                0x0001
+  | DPI_MODE_CONN_CLOSE_RETAG   --                0x0002
+  deriving (Show, Eq)
+
+toDpiModeConnClose :: DPIModeConnClose -> CUInt
+toDpiModeConnClose DPI_MODE_CONN_CLOSE_DEFAULT = 0x0000
+toDpiModeConnClose DPI_MODE_CONN_CLOSE_DROP = 0x0001
+toDpiModeConnClose DPI_MODE_CONN_CLOSE_RETAG = 0x0002
+
+foreign import ccall "dpiConn_close"
+  dpiConn_close
+    :: Connection
+    -> CUInt
+    -> CString
+    -> CUInt
+    -> IO Int
+
+close :: Connection -> IO Int
+close conn = fromIntegral <$>
+  dpiConn_close conn (toDpiModeConnClose DPI_MODE_CONN_CLOSE_DEFAULT)
+    nullPtr 0
+
+fromDPIModeConnClose :: CUInt -> Maybe DPIPurity
+fromDPIModeConnClose 0 = Just DPI_PURITY_DEFAULT
+fromDPIModeConnClose 1 = Just DPI_PURITY_NEW
+fromDPIModeConnClose 2 = Just DPI_PURITY_SELF
+fromDPIModeConnClose _ = Nothing
+
+
 fromDPIPurity :: CUInt -> Maybe DPIPurity
 fromDPIPurity 0 = Just DPI_PURITY_DEFAULT
 fromDPIPurity 1 = Just DPI_PURITY_NEW
@@ -224,7 +255,7 @@ fromDPIPurity _ = Nothing
 --     int outNewSession;
 -- };
 
-data DPIConnCreateParams = DPIConnCreateParams
+data ConnectionCreateParams = ConnectionCreateParams
   { authMode :: DPIAuthMode
   , connectionClass :: CString
   , connectionClassLength :: CUInt
@@ -455,14 +486,14 @@ foreign import ccall "dpiContext_getClientVersion"
 
 foreign import ccall "dpiConn_getServerVersion"
   dpiContext_getServerVersion
-    :: DPIConn
+    :: Connection
     -> Ptr CString
     -> CInt
     -> Ptr VersionInfo
     -> IO Int
 
 getServerVersion
-  :: DPIConn
+  :: Connection
   -> VersionInfo
   -> IO String
 getServerVersion con versionInfo = do
@@ -500,11 +531,11 @@ withCommonCreateParams f = do
 foreign import ccall "dpiContext_initConnCreateParams"
   dpiContext_initConnCreateParams
     :: DPIContext
-    -> Ptr DPIConnCreateParams
+    -> Ptr ConnectionCreateParams
     -> IO Int
 
 withConnCreateParams
-  :: (DPIConnCreateParams -> IO a)
+  :: (ConnectionCreateParams -> IO a)
   -> IO a
 withConnCreateParams f = do
   ctx <- readIORef globalContext
@@ -643,7 +674,7 @@ getErrorInfo = do
 
 foreign import ccall "dpiConn_prepareStmt"
   dpiConn_prepareStmt
-    :: DPIConn
+    :: Connection
     -> CInt
     -> CString
     -> CUInt
@@ -653,7 +684,7 @@ foreign import ccall "dpiConn_prepareStmt"
     -> IO CInt
 
 prepareStmt
-  :: DPIConn
+  :: Connection
   -> String
   -- ^ sql
   -> IO DPIStmt
@@ -859,13 +890,13 @@ uintToDPINativeType 3015 = Just DPI_NATIVE_TYPE_JSON_ARRAY
 uintToDPINativeType 3016 = Just DPI_NATIVE_TYPE_NULL
 uintToDPINativeType _ = Nothing
 
-foreign import ccall "dpiConn_release" dpiConn_release :: DPIConn -> IO CInt
+foreign import ccall "dpiConn_release" dpiConn_release :: Connection -> IO CInt
 foreign import ccall "dpiStmt_release" dpiStmt_release :: DPIStmt -> IO CInt
 
-connRelease
-  :: DPIConn
+release
+  :: Connection
   -> IO ()
-connRelease = throwOracleError <=< dpiConn_release
+release = throwOracleError <=< dpiConn_release
 
 stmtRelease
   :: DPIStmt
@@ -989,3 +1020,16 @@ getRowCount stmt = do
 -- | Column position, starting with 1 for the first column.
 newtype Column = Column {getColumn :: Word32}
   deriving newtype (Num, Show)
+
+-- DPI_EXPORT int dpiConn_ping(dpiConn *conn);
+
+foreign import ccall "dpiConn_ping"
+  dpiConn_ping
+    :: Connection
+    -- dpiStmt *stmt
+    -- uint64_t *count
+    -> IO CInt
+
+-- | Ping the connection to see if it is still alive
+ping :: Connection -> IO Bool
+ping conn = (== 0) <$> dpiConn_ping conn
