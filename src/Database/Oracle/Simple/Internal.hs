@@ -47,11 +47,11 @@ newtype DPIStmt = DPIStmt (Ptr DPIStmt)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
-newtype Connection = Connection (Ptr Connection)
+newtype DPIConn = DPIConn (Ptr DPIConn)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
-newtype Conn = Conn (ForeignPtr Connection)
+newtype Connection = Connection (ForeignPtr DPIConn)
   deriving (Show, Eq)
 
 newtype DPIPool = DPIPool (Ptr DPIPool)
@@ -73,10 +73,10 @@ data ConnectionParams = ConnectionParams
   }
   deriving (Eq, Ord, Show)
 
-connect
+connectDPI
   :: ConnectionParams
-  -> IO Connection
-connect params = do
+  -> IO DPIConn
+connectDPI params = do
   ctx <- readIORef globalContext
   alloca $ \connPtr -> do
     (userCString, fromIntegral -> userLen) <- newCStringLen (user params)
@@ -96,9 +96,20 @@ connect params = do
         connPtr
     peek connPtr
 
+-- | The order that the finalizers are declared in is very important
+-- The close must be defined /last/ so it can run /first/
+-- Per the docs, "The finalizer will run before all other finalizers for the same object which have already been registered."
+connect :: ConnectionParams -> IO Connection
+connect params = do
+  DPIConn connPtr <- connectDPI params
+  fptr <- newForeignPtr_ connPtr
+  addForeignPtrFinalizer dpiConn_release_finalizer fptr
+  addForeignPtrFinalizer dpiConn_close_finalizer fptr
+  pure (Connection fptr)
+
 -- | Brackets a computation between opening and closing a connection.
 withConnection :: ConnectionParams -> (Connection -> IO c) -> IO c
-withConnection params = bracket (connect params) (close >> release)
+withConnection params = bracket (connect params) close
 
 foreign import ccall unsafe "dpiConn_create"
   dpiConn_create
@@ -120,7 +131,7 @@ foreign import ccall unsafe "dpiConn_create"
     -- ^ const dpiCommonCreateParams *commonParams
     -> Ptr ConnectionCreateParams
     -- ^ const dpiConnCreateParams *createParams
-    -> Ptr Connection
+    -> Ptr DPIConn
     -- ^ dpi * conn
     -> IO CInt
 
@@ -203,20 +214,21 @@ toDpiModeConnClose DPI_MODE_CONN_CLOSE_RETAG = 0x0002
 
 foreign import ccall "dpiConn_close"
   dpiConn_close
-    :: Connection
+    :: DPIConn
     -> CUInt
     -> CString
     -> CUInt
-    -> IO Int
+    -> IO CInt
 
-close :: Connection -> IO Int
-close conn =
-  fromIntegral
-    <$> dpiConn_close
-      conn
-      (toDpiModeConnClose DPI_MODE_CONN_CLOSE_DEFAULT)
-      nullPtr
-      0
+foreign import ccall "&finalize_connection_default"
+  dpiConn_close_finalizer :: FunPtr (Ptr DPIConn -> IO ())
+
+foreign import ccall "&dpiConn_release"
+  dpiConn_release_finalizer :: FunPtr (Ptr DPIConn -> IO ())
+
+-- | An explicit call to 'close' will invoke the finalizers before the GC does
+close :: Connection -> IO ()
+close (Connection conn) = finalizeForeignPtr conn
 
 fromDPIModeConnClose :: CUInt -> Maybe DPIPurity
 fromDPIModeConnClose 0 = Just DPI_PURITY_DEFAULT
@@ -429,7 +441,7 @@ foreign import ccall "dpiContext_getClientVersion"
 
 foreign import ccall "dpiConn_getServerVersion"
   dpiContext_getServerVersion
-    :: Connection
+    :: Ptr DPIConn
     -> Ptr CString
     -> CInt
     -> Ptr VersionInfo
@@ -439,14 +451,16 @@ getServerVersion
   :: Connection
   -> VersionInfo
   -> IO String
-getServerVersion con versionInfo = do
-  alloca $ \releaseStringPtr -> do
-    alloca $ \versionInfoPtr -> do
-      poke versionInfoPtr versionInfo
-      status <- dpiContext_getServerVersion con releaseStringPtr (fromIntegral (10 :: Int)) versionInfoPtr
-      if status == 0
-        then (peekCString <=< peek) releaseStringPtr
-        else error $ show status <> " oh no!"
+getServerVersion (Connection fptr) versionInfo = do
+  withForeignPtr fptr $ \conn ->
+    alloca $ \releaseStringPtr -> do
+      alloca $ \versionInfoPtr -> do
+        poke versionInfoPtr versionInfo
+        status <- dpiContext_getServerVersion
+          conn releaseStringPtr (fromIntegral (10 :: Int)) versionInfoPtr
+        if status == 0
+          then (peekCString <=< peek) releaseStringPtr
+          else error $ show status <> " oh no!"
 
 foreign import ccall "dpiContext_initCommonCreateParams"
   dpiContext_initCommonCreateParams
@@ -563,7 +577,7 @@ getErrorInfo = do
 
 foreign import ccall "dpiConn_prepareStmt"
   dpiConn_prepareStmt
-    :: Connection
+    :: Ptr DPIConn
     -> CInt
     -> CString
     -> CUInt
@@ -577,12 +591,13 @@ prepareStmt
   -> String
   -- ^ sql
   -> IO DPIStmt
-prepareStmt conn sql = do
-  alloca $ \stmtPtr -> do
-    (sqlCStr, fromIntegral -> sqlCStrLen) <- newCStringLen sql
-    status <- dpiConn_prepareStmt conn 0 sqlCStr sqlCStrLen nullPtr 0 stmtPtr
-    throwOracleError status
-    peek stmtPtr
+prepareStmt (Connection fptr) sql = do
+  withForeignPtr fptr $ \conn -> do
+    alloca $ \stmtPtr -> do
+      (sqlCStr, fromIntegral -> sqlCStrLen) <- newCStringLen sql
+      status <- dpiConn_prepareStmt conn 0 sqlCStr sqlCStrLen nullPtr 0 stmtPtr
+      throwOracleError status
+      peek stmtPtr
 
 data DPIModeExec
   = DPI_MODE_EXEC_DEFAULT -- 0x00000000
@@ -765,13 +780,7 @@ uintToDPINativeType 3015 = Just DPI_NATIVE_TYPE_JSON_ARRAY
 uintToDPINativeType 3016 = Just DPI_NATIVE_TYPE_NULL
 uintToDPINativeType _ = Nothing
 
-foreign import ccall "dpiConn_release" dpiConn_release :: Connection -> IO CInt
 foreign import ccall "dpiStmt_release" dpiStmt_release :: DPIStmt -> IO CInt
-
-release
-  :: Connection
-  -> IO ()
-release = throwOracleError <=< dpiConn_release
 
 stmtRelease
   :: DPIStmt
@@ -885,9 +894,11 @@ newtype Column = Column {getColumn :: Word32}
 
 foreign import ccall "dpiConn_ping"
   dpiConn_ping
-    :: Connection
+    :: Ptr DPIConn
     -> IO CInt
 
 -- | Ping the connection to see if it is still alive
 ping :: Connection -> IO Bool
-ping conn = (== 0) <$> dpiConn_ping conn
+ping (Connection fptr) =
+  withForeignPtr fptr $ \conn ->
+    (== 0) <$> dpiConn_ping conn
