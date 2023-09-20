@@ -44,3 +44,19 @@ query_ conn sql = do
     tsVal <- getRow stmt
     found <- fetch stmt
     loop stmt (xs ++ [tsVal]) found
+
+-- | Incrementally process a query
+forEach_ :: FromRow row => Connection -> String -> (row -> IO ()) -> IO ()
+forEach_ conn sql cont = do
+  stmt <- prepareStmt conn sql
+  dpiExecute stmt DPI_MODE_EXEC_DEFAULT
+  found <- fetch stmt
+  loop stmt found
+    where
+      loop stmt n | n < 1 = pure ()
+      loop stmt _ = do
+        tsVal <- getRow stmt
+        cont tsVal
+        found <- fetch stmt
+        loop stmt found
+
