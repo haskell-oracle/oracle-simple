@@ -75,7 +75,7 @@ $ nix-shell --run 'cabal build'
 #### Running tests
 
 ```bash
-$ docker-compose up
+$ docker-compose up -d
 $ nix-build && ./result/bin/example
 ```
 
@@ -104,6 +104,6 @@ ln -s ~/Downloads/instantclient_19_8/libclntsh.dylib /usr/local/lib/
 
 Run docker-compose up and tests as so:
 ``` bash
-docker-compose up
+docker-compose up -d
 stack run tests
 ```
