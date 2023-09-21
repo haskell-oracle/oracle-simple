@@ -68,6 +68,8 @@ instance (FromField a) => FromField (Maybe a) where
 instance FromField UTCTime where
   fromField = dpiTimeStampToUTCTime <$> fromField
 
+-- | Converts a DPITimestamp into the UTCTime zone by applying the offsets
+-- to the year, month, day, hour, minutes and seconds
 dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
 dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
   where
@@ -85,11 +87,11 @@ dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
       = dpi
       { tzHourOffset = 0
       , tzMinuteOffset = 0
-      , hour = hours
-      , minute = minutes
       , year = fromIntegral year'
       , month = fromIntegral month'
       , day = fromIntegral day'
+      , hour = hours
+      , minute = minutes
       }
 
 dpiTimeStampToUTCTime :: DPITimestamp -> UTCTime
