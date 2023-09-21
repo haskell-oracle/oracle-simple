@@ -34,5 +34,5 @@ spec = do
 
       it "Should roundtrip DPITimestamp through UTCTime" $ \conn -> do
         property $ \dpiTimestamp -> do
-          let k = (dpiTimeStampToUTCTime dpiTimestamp)
-          utcTimeToDPITimestamp k `shouldBe` dpiTimestamp
+          utcTimeToDPITimestamp (dpiTimeStampToUTCTime dpiTimestamp)
+            `shouldBe` dpiTimeStampToUTCDPITimeStamp dpiTimestamp

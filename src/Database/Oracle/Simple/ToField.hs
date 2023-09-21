@@ -44,7 +44,7 @@ utcTimeToDPITimestamp utcTime = dpiTs
     TimeOfDay {..} = localTimeOfDay
     TimeZone {..} = zonedTimeZone
     (seconds, fractionalSeconds) = properFraction todSec
-    (minuteOffset, hourOffset) = timeZoneMinutes `quotRem` 60
+    (hourOffset, minuteOffset) = timeZoneMinutes `quotRem` 60
     dpiTs = DPITimestamp
       { year           = fromIntegral year
       , month          = fromIntegral month
@@ -54,5 +54,5 @@ utcTimeToDPITimestamp utcTime = dpiTs
       , second         = seconds
       , fsecond        = truncate (fractionalSeconds * 1_000_000_000_000)
       , tzHourOffset   = fromIntegral hourOffset
-      , tzMinuteOffset = fromIntegral timeZoneMinutes
+      , tzMinuteOffset = fromIntegral minuteOffset
       }

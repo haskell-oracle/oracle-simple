@@ -68,9 +68,24 @@ instance (FromField a) => FromField (Maybe a) where
 instance FromField UTCTime where
   fromField = dpiTimeStampToUTCTime <$> fromField
 
+dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
+dpiTimeStampToUTCDPITimeStamp dpi = utcDpi
+  where
+    offsetInMinutes = (tzHourOffset dpi * 60) + tzMinuteOffset dpi
+    currentMinutes = (hour dpi * 60) + minute dpi
+    (hours, minutes) =  (currentMinutes - fromIntegral offsetInMinutes) `quotRem` 60
+    utcDpi
+      = dpi
+      { tzHourOffset = 0
+      , tzMinuteOffset = 0
+      , hour = hours
+      , minute = minutes
+      }
+
 dpiTimeStampToUTCTime :: DPITimestamp -> UTCTime
-dpiTimeStampToUTCTime DPITimestamp {..} =
+dpiTimeStampToUTCTime dpi =
   let
+    DPITimestamp {..} = dpiTimeStampToUTCDPITimeStamp dpi
     tz = utc { timeZoneMinutes = fromIntegral $ (tzHourOffset * 60) + tzMinuteOffset }
     local = LocalTime d tod
     d = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
