@@ -68,43 +68,16 @@ instance (FromField a) => FromField (Maybe a) where
 instance FromField UTCTime where
   fromField = dpiTimeStampToUTCTime <$> fromField
 
--- | Converts a DPITimestamp into the UTCTime zone by applying the offsets
--- to the year, month, day, hour, minutes and seconds
-dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
-dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
-  where
-    offsetInMinutes = (tzHourOffset * 60) + tzMinuteOffset
-    currentMinutes = (hour * 60) + minute
-    (hours, minutes) = (currentMinutes - fromIntegral offsetInMinutes) `quotRem` 60
-    gregorianDay = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
-    updatedDay | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440
-               = addDays 1 gregorianDay
-               | fromIntegral currentMinutes + fromIntegral offsetInMinutes < 0
-               = addDays (-1) gregorianDay
-               | otherwise = gregorianDay
-    (year', month', day') = toGregorian updatedDay
-    utcDpi
-      = dpi
-      { tzHourOffset = 0
-      , tzMinuteOffset = 0
-      , year = fromIntegral year'
-      , month = fromIntegral month'
-      , day = fromIntegral day'
-      , hour = hours
-      , minute = minutes
-      }
-
 dpiTimeStampToUTCTime :: DPITimestamp -> UTCTime
 dpiTimeStampToUTCTime dpi =
   let
     DPITimestamp {..} = dpiTimeStampToUTCDPITimeStamp dpi
-    tz = utc { timeZoneMinutes = fromIntegral $ (tzHourOffset * 60) + tzMinuteOffset }
     local = LocalTime d tod
     d = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
     tod = TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second + picos)
     picos = MkFixed (fromIntegral fsecond) :: Pico
   in
-    localTimeToUTC tz local
+    localTimeToUTC utc local
 
 -- | Encapsulates all information needed to parse a field as a Haskell value.
 newtype FieldParser a = FieldParser

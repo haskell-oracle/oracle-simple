@@ -36,7 +36,7 @@ instance ToField UTCTime where
   toField utcTime = pure $ AsTimestamp (utcTimeToDPITimestamp utcTime)
 
 utcTimeToDPITimestamp :: UTCTime -> DPITimestamp
-utcTimeToDPITimestamp utcTime = dpiTs
+utcTimeToDPITimestamp utcTime = dpiTimeStampToUTCDPITimeStamp dpiTs
   where
     ZonedTime {..} = utcToZonedTime utc utcTime
     LocalTime {..} = zonedTimeToLocalTime

@@ -543,6 +543,32 @@ data DPITimestamp = DPITimestamp
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+-- | Converts a DPITimestamp into the UTCTime zone by applying the offsets
+-- to the year, month, day, hour, minutes and seconds
+dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
+dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
+  where
+    offsetInMinutes = (tzHourOffset * 60) + tzMinuteOffset
+    currentMinutes = (hour * 60) + minute
+    (hours, minutes) = (currentMinutes - fromIntegral offsetInMinutes) `quotRem` 60
+    gregorianDay = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+    updatedDay | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440
+               = addDays 1 gregorianDay
+               | fromIntegral currentMinutes + fromIntegral offsetInMinutes < 0
+               = addDays (-1) gregorianDay
+               | otherwise = gregorianDay
+    (year', month', day') = toGregorian updatedDay
+    utcDpi
+      = dpi
+      { tzHourOffset = 0
+      , tzMinuteOffset = 0
+      , year = fromIntegral year'
+      , month = fromIntegral month'
+      , day = fromIntegral day'
+      , hour = hours
+      , minute = minutes
+      }
+
 instance Arbitrary DPITimestamp where
   arbitrary = do
     year           <- choose (1000, 2023)
