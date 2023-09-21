@@ -552,7 +552,7 @@ instance Arbitrary DPITimestamp where
     minute         <- choose (1, 59)
     second         <- choose (1, 59)
     fsecond        <- choose (0, 100000)
-    tzHourOffset   <- choose (-11, 11)
+    tzHourOffset   <- choose (-14, 14)
     tzMinuteOffset <- choose (-59, 59)
     pure DPITimestamp {..}
 
