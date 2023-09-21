@@ -69,17 +69,27 @@ instance FromField UTCTime where
   fromField = dpiTimeStampToUTCTime <$> fromField
 
 dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
-dpiTimeStampToUTCDPITimeStamp dpi = utcDpi
+dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
   where
-    offsetInMinutes = (tzHourOffset dpi * 60) + tzMinuteOffset dpi
-    currentMinutes = (hour dpi * 60) + minute dpi
-    (hours, minutes) =  (currentMinutes - fromIntegral offsetInMinutes) `quotRem` 60
+    offsetInMinutes = (tzHourOffset * 60) + tzMinuteOffset
+    currentMinutes = (hour * 60) + minute
+    (hours, minutes) = (currentMinutes - fromIntegral offsetInMinutes) `quotRem` 60
+    gregorianDay = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+    updatedDay | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440
+               = addDays 1 gregorianDay
+               | fromIntegral currentMinutes + fromIntegral offsetInMinutes < 0
+               = addDays (-1) gregorianDay
+               | otherwise = gregorianDay
+    (year', month', day') = toGregorian updatedDay
     utcDpi
       = dpi
       { tzHourOffset = 0
       , tzMinuteOffset = 0
       , hour = hours
       , minute = minutes
+      , year = fromIntegral year'
+      , month = fromIntegral month'
+      , day = fromIntegral day'
       }
 
 dpiTimeStampToUTCTime :: DPITimestamp -> UTCTime
