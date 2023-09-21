@@ -28,10 +28,12 @@ spec = do
             (fromIntegral year)
             (fromIntegral month)
             (fromIntegral day)
+
     describe "Connection tests" $ do
       it "Should check connetion health" $ \conn ->
         (`shouldBe` True) =<< isHealthy conn
 
+    describe "DPITimeStamp tests" $ do
       it "Should roundtrip DPITimestamp through UTCTime" $ \conn -> do
         property $ \dpiTimestamp -> do
           utcTimeToDPITimestamp (dpiTimeStampToUTCTime dpiTimestamp)
