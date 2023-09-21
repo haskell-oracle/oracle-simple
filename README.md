@@ -58,7 +58,11 @@ data ReturnedRow = ReturnedRow
 
 ```
 
-## Build
+## Developing locally
+
+### Using nix
+
+#### Building
 
 ```bash
 $ nix-build
@@ -68,15 +72,38 @@ $ nix-build
 $ nix-shell --run 'cabal build'
 ```
 
+#### Running tests
+
+```bash
+$ docker-compose up -d
+$ nix-build && ./result/bin/example
+```
+
+### Using stack
+
+#### Building
+
+First install `odpi` (e.g. on MacOS):
+``` bash
+brew install odpi
+```
+
+This should suffice to permit you to build:
 ```bash
 $ stack build
 ```
 
+#### Running tests
 
-## Test
+You'll need a runtime dependency: goto https://www.oracle.com/database/technologies/instant-client/macos-intel-x86-downloads.html#ic_osx_inst and follow the instant client installation instructions.
 
-```bash
-$ docker-compose up
-$ nix-build && ./result/bin/example
+Then link a dynamic lib from the instant client to a location on your host where it can be found:
+```
+ln -s ~/Downloads/instantclient_19_8/libclntsh.dylib /usr/local/lib/
 ```
 
+Run docker-compose up and tests as so:
+``` bash
+docker-compose up -d
+stack run tests
+```
