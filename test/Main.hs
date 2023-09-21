@@ -38,3 +38,9 @@ spec = do
         property $ \dpiTimestamp -> do
           utcTimeToDPITimestamp (dpiTimeStampToUTCTime dpiTimestamp)
             `shouldBe` dpiTimeStampToUTCDPITimeStamp dpiTimestamp
+
+      it "Idempotency of dpiTimeStampToUTCDPITimeStamp " $ \conn -> do
+        property $ \dpi -> do
+          dpiTimeStampToUTCDPITimeStamp (dpiTimeStampToUTCDPITimeStamp dpi)
+            `shouldBe` dpiTimeStampToUTCDPITimeStamp dpi
+
