@@ -548,7 +548,7 @@ instance Arbitrary DPITimestamp where
     year           <- choose (1000, 2023)
     month          <- choose (1, 12)
     day            <- choose (1, 28)
-    hour           <- choose (1, 12)
+    hour           <- choose (1, 23)
     minute         <- choose (1, 59)
     second         <- choose (1, 59)
     fsecond        <- choose (0, 100000)
