@@ -902,3 +902,18 @@ ping :: Connection -> IO Bool
 ping (Connection fptr) =
   withForeignPtr fptr $ \conn ->
     (== 0) <$> dpiConn_ping conn
+
+-- | DPI_EXPORT int dpiConn_getIsHealthy(dpiConn *conn, int *isHealthy);
+foreign import ccall unsafe "dpiConn_getIsHealthy"
+  dpiConn_getIsHealthy
+    :: Ptr DPIConn
+    -> Ptr CInt
+    -> IO CInt
+
+-- | A pointer to an integer defining whether the connection is healthy (1) or not (0), which will be populated upon successful completion of this function.
+isHealthy :: Connection -> IO Bool
+isHealthy (Connection fptr) =
+  withForeignPtr fptr $ \conn -> do
+    alloca $ \healthPtr -> do
+      throwOracleError =<< dpiConn_getIsHealthy conn healthPtr
+      (==1) <$> peek healthPtr
