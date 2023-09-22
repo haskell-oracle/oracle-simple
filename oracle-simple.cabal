@@ -23,7 +23,7 @@ executable tests
   main-is:
     Main.hs
   build-depends:
-    base < 5, oracle-simple, text, time, hspec
+    base < 5, oracle-simple, text, time, hspec, QuickCheck, quickcheck-instances
   hs-source-dirs:
     test
   default-language:
@@ -41,7 +41,7 @@ library
     , Database.Oracle.Simple.Query
     , Database.Oracle.Simple.Execute
   build-depends:
-    base < 5, derive-storable, text, mtl
+    base < 5, derive-storable, text, mtl, time, QuickCheck
   hs-source-dirs:
     src
   extra-libraries:

@@ -1,3 +1,4 @@
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
@@ -10,9 +11,11 @@ module Database.Oracle.Simple.FromField where
 
 import Control.Monad
 import Data.Coerce
+import Data.Fixed
 import Data.Int
 import Data.Proxy
 import Data.Text
+import Data.Time
 import Data.Word
 import Database.Oracle.Simple.Internal
 import Foreign.C.String
@@ -62,14 +65,19 @@ instance (FromField a) => FromField (Maybe a) where
       then pure Nothing
       else Just <$> readDPIDataBuffer (fromField @a) ptr
 
--- instance FromField UTCTime where
---   fieldType Proxy = fieldType (Proxy @DPITimestamp)
---   fromField = do
---     DPITimestamp {..} <- fromField
---     let
---       yymmdd = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
---       hhmmss = 0
---     pure (UTCTime yymmdd hhmmss)
+instance FromField UTCTime where
+  fromField = dpiTimeStampToUTCTime <$> fromField
+
+dpiTimeStampToUTCTime :: DPITimestamp -> UTCTime
+dpiTimeStampToUTCTime dpi =
+  let
+    DPITimestamp {..} = dpiTimeStampToUTCDPITimeStamp dpi
+    local = LocalTime d tod
+    d = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+    tod = TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second + picos)
+    picos = MkFixed (fromIntegral fsecond * 1000) :: Pico
+  in
+    localTimeToUTC utc local
 
 -- | Encapsulates all information needed to parse a field as a Haskell value.
 newtype FieldParser a = FieldParser

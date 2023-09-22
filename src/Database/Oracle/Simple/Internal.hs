@@ -22,6 +22,8 @@
 
 module Database.Oracle.Simple.Internal where
 
+import Test.QuickCheck
+import Data.Time
 import Control.Exception
 import Control.Monad
 import Control.Monad.State.Strict
@@ -541,8 +543,64 @@ data DPITimestamp = DPITimestamp
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+-- | Converts a DPITimestamp into the UTCTime zone by applying the offsets
+-- to the year, month, day, hour, minutes and seconds
+dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
+dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
+  where
+    offsetInMinutes, currentMinutes :: Int
+    offsetInMinutes = negate $ (fromIntegral tzHourOffset * 60) + fromIntegral tzMinuteOffset
+    currentMinutes = (fromIntegral hour * 60) + fromIntegral minute
+    (hours, minutes) = ((currentMinutes + offsetInMinutes) `mod` 1440) `quotRem` 60
+
+    gregorianDay = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+    updatedDay | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440
+               = addDays 1 gregorianDay
+               | fromIntegral currentMinutes + fromIntegral offsetInMinutes < 0
+               = addDays (-1) gregorianDay
+               | otherwise = gregorianDay
+    (year', month', day') = toGregorian updatedDay
+    utcDpi
+      = dpi
+      { tzHourOffset = 0
+      , tzMinuteOffset = 0
+      , year = fromIntegral year'
+      , month = fromIntegral month'
+      , day = fromIntegral day'
+      , hour = fromIntegral hours
+      , minute = fromIntegral minutes
+      }
+
+instance Arbitrary DPITimestamp where
+  arbitrary = do
+    year           <- choose (1000, 2023)
+    month          <- choose (1, 12)
+    day            <- choose (1, 28)
+    hour           <- choose (1, 23)
+    minute         <- choose (1, 59)
+    second         <- choose (1, 59)
+    fsecond        <- choose (0, 100000)
+    tzHourOffset   <- choose (-14, 14)
+    tzMinuteOffset <-
+      if signum tzHourOffset < 0
+        then choose (-59, 0)
+        else choose (0, 59)
+    pure DPITimestamp {..}
+
 instance HasDPINativeType DPITimestamp where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
+
+instance HasDPINativeType UTCTime where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
+
+-- struct dpiAppContext {
+--     const char *namespaceName;
+--     uint32_t namespaceNameLength;
+--     const char *name;
+--     uint32_t nameLength;
+--     const char *value;
+--     uint32_t valueLength;
+-- };
 
 data DPIAppContext = DPIAppContext
   { namespaceName :: CString
