@@ -44,3 +44,27 @@ spec = do
           dpiTimeStampToUTCDPITimeStamp (dpiTimeStampToUTCDPITimeStamp dpi)
             `shouldBe` dpiTimeStampToUTCDPITimeStamp dpi
 
+      it "YYYY/MM/DD should be affected by UTC offset changes" $ \_ -> do
+        let dpi =
+              DPITimestamp { year = 1000
+                           , month = 1
+                           , day = 1
+                           , hour = 0
+                           , minute = 0
+                           , second = 0
+                           , fsecond = 0
+                           , tzHourOffset = 0
+                           , tzMinuteOffset = 1
+                           }
+        let expected =
+              DPITimestamp { year = 999
+                           , month = 12
+                           , day = 31
+                           , hour = 23
+                           , minute = 59
+                           , second = 0
+                           , fsecond = 0
+                           , tzHourOffset = 0
+                           , tzMinuteOffset = 0
+                           }
+        dpiTimeStampToUTCDPITimeStamp dpi `shouldBe` expected

@@ -548,9 +548,11 @@ data DPITimestamp = DPITimestamp
 dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
 dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
   where
-    offsetInMinutes = (tzHourOffset * 60) + tzMinuteOffset
-    currentMinutes = (hour * 60) + minute
-    (hours, minutes) = (currentMinutes - fromIntegral offsetInMinutes) `quotRem` 60
+    offsetInMinutes, currentMinutes :: Int
+    offsetInMinutes = negate $ (fromIntegral tzHourOffset * 60) + fromIntegral tzMinuteOffset
+    currentMinutes = (fromIntegral hour * 60) + fromIntegral minute
+    (hours, minutes) = ((currentMinutes + offsetInMinutes) `mod` 1440) `quotRem` 60
+
     gregorianDay = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
     updatedDay | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440
                = addDays 1 gregorianDay
@@ -565,8 +567,8 @@ dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
       , year = fromIntegral year'
       , month = fromIntegral month'
       , day = fromIntegral day'
-      , hour = hours
-      , minute = minutes
+      , hour = fromIntegral hours
+      , minute = fromIntegral minutes
       }
 
 instance Arbitrary DPITimestamp where
@@ -579,7 +581,10 @@ instance Arbitrary DPITimestamp where
     second         <- choose (1, 59)
     fsecond        <- choose (0, 100000)
     tzHourOffset   <- choose (-14, 14)
-    tzMinuteOffset <- choose (-59, 59)
+    tzMinuteOffset <-
+      if signum tzHourOffset < 0
+        then choose (-59, 0)
+        else choose (0, 59)
     pure DPITimestamp {..}
 
 instance HasDPINativeType DPITimestamp where
