@@ -1,6 +1,9 @@
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
+import Foreign.C.Types
+import Data.Fixed
 import Control.Monad.IO.Class (liftIO)
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
@@ -68,3 +71,8 @@ spec = do
                            , tzMinuteOffset = 0
                            }
         dpiTimeStampToUTCDPITimeStamp dpi `shouldBe` expected
+
+      it "Should roundtrip UTCTime through DPITimestamp (w/ nanos -- not picos) " $ \_ -> do
+        property $ \tod day (nanos :: Nano) -> do
+          let utc = UTCTime day $ timeOfDayToTime tod { todSec = realToFrac nanos }
+          utc `shouldBe` dpiTimeStampToUTCTime (utcTimeToDPITimestamp utc)
