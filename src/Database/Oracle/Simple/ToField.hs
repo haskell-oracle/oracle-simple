@@ -52,7 +52,7 @@ utcTimeToDPITimestamp utcTime = dpiTimeStampToUTCDPITimeStamp dpiTs
       , hour           = fromIntegral todHour
       , minute         = fromIntegral todMin
       , second         = seconds
-      , fsecond        = truncate (fractionalSeconds * 1_000_000_000_000)
+      , fsecond        = truncate (fractionalSeconds * 1e9)
       , tzHourOffset   = fromIntegral hourOffset
       , tzMinuteOffset = fromIntegral minuteOffset
       }

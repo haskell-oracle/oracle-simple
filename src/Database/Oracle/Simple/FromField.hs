@@ -75,7 +75,7 @@ dpiTimeStampToUTCTime dpi =
     local = LocalTime d tod
     d = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
     tod = TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second + picos)
-    picos = MkFixed (fromIntegral fsecond) :: Pico
+    picos = MkFixed (fromIntegral fsecond * 1000) :: Pico
   in
     localTimeToUTC utc local
 
