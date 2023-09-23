@@ -1,18 +1,18 @@
-{-# LANGUAGE DeriveGeneric              #-}
-{-# LANGUAGE DeriveAnyClass             #-}
-{-# LANGUAGE DataKinds                  #-}
-{-# LANGUAGE DefaultSignatures          #-}
-{-# LANGUAGE DerivingStrategies         #-}
-{-# LANGUAGE FlexibleContexts           #-}
-{-# LANGUAGE FlexibleInstances          #-}
+{-# LANGUAGE DataKinds #-}
+{-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes                 #-}
-{-# LANGUAGE RecordWildCards            #-}
-{-# LANGUAGE ScopedTypeVariables        #-}
-{-# LANGUAGE TypeApplications           #-}
-{-# LANGUAGE TypeOperators              #-}
-{-# LANGUAGE TypeSynonymInstances       #-}
-{-# LANGUAGE UndecidableInstances       #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Database.Oracle.Simple.FromRow where
 
