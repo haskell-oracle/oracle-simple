@@ -32,6 +32,8 @@ class FromRow a where
   default fromRow :: (GFromRow (Rep a), Generic a) => RowParser a
   fromRow = to <$> gFromRow
 
+instance FromField a => FromRow (Only a)
+
 instance FromField a => FromRow (Identity a)
 
 instance (FromField a, FromField b) => FromRow (a, b)
@@ -69,10 +71,6 @@ instance
   , FromField j
   )
   => FromRow (a, b, c, d, e, f, g, h, i, j)
-
-newtype Only a = Only { getOnly :: a }
-  deriving stock (Show, Eq, Generic)
-  deriving anyclass FromRow
 
 class GFromRow f where
   gFromRow :: RowParser (f a)

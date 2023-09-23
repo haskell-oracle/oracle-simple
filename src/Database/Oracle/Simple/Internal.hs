@@ -975,3 +975,8 @@ isHealthy (Connection fptr) =
     alloca $ \healthPtr -> do
       throwOracleError =<< dpiConn_getIsHealthy conn healthPtr
       (==1) <$> peek healthPtr
+
+-- | The 1-tuple type or single-value "collection".
+-- Structurally equivalent to 'Data.Functor.Identity.Identity'.
+newtype Only a = Only { fromOnly :: a }
+  deriving stock (Eq, Ord, Read, Show, Generic)

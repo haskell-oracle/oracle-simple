@@ -48,6 +48,8 @@ class ToRow a where
   default toRow :: (GToRow (Rep a), Generic a) => a -> RowWriter ()
   toRow = gToRow . from
 
+instance ToField a => ToRow (Only a)
+
 instance ToField a => ToRow (Identity a)
 
 instance (ToField a, ToField b) => ToRow (a, b)
