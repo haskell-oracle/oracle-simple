@@ -22,8 +22,6 @@
 
 module Database.Oracle.Simple.Internal where
 
-import Test.QuickCheck
-import Data.Time
 import Control.Exception
 import Control.Monad
 import Control.Monad.State.Strict
@@ -32,6 +30,7 @@ import Data.IORef
 import Data.Kind
 import Data.List as L
 import Data.Text
+import Data.Time
 import Data.Typeable
 import Data.Word
 import Foreign
@@ -44,6 +43,7 @@ import Foreign.Storable.Generic
 import GHC.Generics
 import GHC.TypeLits
 import System.IO.Unsafe
+import Test.QuickCheck
 
 newtype DPIStmt = DPIStmt (Ptr DPIStmt)
   deriving (Show, Eq)
@@ -204,9 +204,9 @@ toDPIPurity :: DPIPurity -> CUInt
 toDPIPurity = fromIntegral . fromEnum
 
 data DPIModeConnClose
-  = DPI_MODE_CONN_CLOSE_DEFAULT --                0x0000
-  | DPI_MODE_CONN_CLOSE_DROP    --                0x0001
-  | DPI_MODE_CONN_CLOSE_RETAG   --                0x0002
+  = DPI_MODE_CONN_CLOSE_DEFAULT -- 0x0000
+  | DPI_MODE_CONN_CLOSE_DROP    -- 0x0001
+  | DPI_MODE_CONN_CLOSE_RETAG   -- 0x0002
   deriving (Show, Eq)
 
 toDpiModeConnClose :: DPIModeConnClose -> CUInt
@@ -458,8 +458,12 @@ getServerVersion (Connection fptr) versionInfo = do
     alloca $ \releaseStringPtr -> do
       alloca $ \versionInfoPtr -> do
         poke versionInfoPtr versionInfo
-        status <- dpiContext_getServerVersion
-          conn releaseStringPtr (fromIntegral (10 :: Int)) versionInfoPtr
+        status <-
+          dpiContext_getServerVersion
+            conn
+            releaseStringPtr
+            (fromIntegral (10 :: Int))
+            versionInfoPtr
         if status == 0
           then (peekCString <=< peek) releaseStringPtr
           else error $ show status <> " oh no!"
@@ -547,21 +551,22 @@ data DPITimestamp = DPITimestamp
 -- to the year, month, day, hour, minutes and seconds
 dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
 dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
-  where
-    offsetInMinutes, currentMinutes :: Int
-    offsetInMinutes = negate $ (fromIntegral tzHourOffset * 60) + fromIntegral tzMinuteOffset
-    currentMinutes = (fromIntegral hour * 60) + fromIntegral minute
-    (hours, minutes) = ((currentMinutes + offsetInMinutes) `mod` 1440) `quotRem` 60
+ where
+  offsetInMinutes, currentMinutes :: Int
+  offsetInMinutes = negate $ (fromIntegral tzHourOffset * 60) + fromIntegral tzMinuteOffset
+  currentMinutes = (fromIntegral hour * 60) + fromIntegral minute
+  (hours, minutes) = ((currentMinutes + offsetInMinutes) `mod` 1440) `quotRem` 60
 
-    gregorianDay = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
-    updatedDay | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440
-               = addDays 1 gregorianDay
-               | fromIntegral currentMinutes + fromIntegral offsetInMinutes < 0
-               = addDays (-1) gregorianDay
-               | otherwise = gregorianDay
-    (year', month', day') = toGregorian updatedDay
-    utcDpi
-      = dpi
+  gregorianDay = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+  updatedDay
+    | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440 =
+        addDays 1 gregorianDay
+    | fromIntegral currentMinutes + fromIntegral offsetInMinutes < 0 =
+        addDays (-1) gregorianDay
+    | otherwise = gregorianDay
+  (year', month', day') = toGregorian updatedDay
+  utcDpi =
+    dpi
       { tzHourOffset = 0
       , tzMinuteOffset = 0
       , year = fromIntegral year'
@@ -573,19 +578,19 @@ dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
 
 instance Arbitrary DPITimestamp where
   arbitrary = do
-    year           <- choose (1000, 2023)
-    month          <- choose (1, 12)
-    day            <- choose (1, 28)
-    hour           <- choose (1, 23)
-    minute         <- choose (1, 59)
-    second         <- choose (1, 59)
-    fsecond        <- choose (0, 100000)
-    tzHourOffset   <- choose (-14, 14)
+    year <- choose (1000, 2023)
+    month <- choose (1, 12)
+    day <- choose (1, 28)
+    hour <- choose (1, 23)
+    minute <- choose (1, 59)
+    second <- choose (1, 59)
+    fsecond <- choose (0, 100000)
+    tzHourOffset <- choose (-14, 14)
     tzMinuteOffset <-
       if signum tzHourOffset < 0
         then choose (-59, 0)
         else choose (0, 59)
-    pure DPITimestamp {..}
+    pure DPITimestamp{..}
 
 instance HasDPINativeType DPITimestamp where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
@@ -974,4 +979,9 @@ isHealthy (Connection fptr) =
   withForeignPtr fptr $ \conn -> do
     alloca $ \healthPtr -> do
       throwOracleError =<< dpiConn_getIsHealthy conn healthPtr
-      (==1) <$> peek healthPtr
+      (== 1) <$> peek healthPtr
+
+-- | The 1-tuple type or single-value "collection".
+-- Structurally equivalent to 'Data.Functor.Identity.Identity'.
+newtype Only a = Only {fromOnly :: a}
+  deriving stock (Eq, Ord, Read, Show, Generic)

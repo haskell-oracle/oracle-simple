@@ -1,30 +1,30 @@
 {-# LANGUAGE BangPatterns #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE DataKinds #-}
-{-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE DefaultSignatures #-}
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Database.Oracle.Simple.ToRow where
 
-import           Control.Monad
-import           Control.Monad.State.Strict
-import           Data.Functor.Identity
-import qualified Data.List                       as L
-import           Data.Proxy
-import           Data.Traversable
-import           Data.Word
-import           Database.Oracle.Simple.Internal
-import           Database.Oracle.Simple.ToField
-import           Foreign.Ptr
-import           GHC.Generics
-import           GHC.TypeLits
+import Control.Monad
+import Control.Monad.State.Strict
+import Data.Functor.Identity
+import qualified Data.List as L
+import Data.Proxy
+import Data.Traversable
+import Data.Word
+import Database.Oracle.Simple.Internal
+import Database.Oracle.Simple.ToField
+import Foreign.Ptr
+import GHC.Generics
+import GHC.TypeLits
 
 newtype RowWriter a = RowWriter {runRowWriter :: DPIStmt -> StateT Column IO a}
 
@@ -48,6 +48,8 @@ class ToRow a where
   default toRow :: (GToRow (Rep a), Generic a) => a -> RowWriter ()
   toRow = gToRow . from
 
+instance ToField a => ToRow (Only a)
+
 instance ToField a => ToRow (Identity a)
 
 instance (ToField a, ToField b) => ToRow (a, b)
@@ -62,13 +64,16 @@ instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f) => T
 
 instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g) => ToRow (a, b, c, d, e, f, g)
 
-instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h)
+instance
+  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h)
   => ToRow (a, b, c, d, e, f, g, h)
 
-instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i)
+instance
+  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i)
   => ToRow (a, b, c, d, e, f, g, h, i)
 
-instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i, ToField j)
+instance
+  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i, ToField j)
   => ToRow (a, b, c, d, e, f, g, h, i, j)
 
 class GToRow f where
@@ -90,7 +95,7 @@ instance (TypeError ('Text "Sum types not supported")) => GToRow (l :+: r) where
   gToRow = error "Sum types not supported"
 
 instance (ToField a) => GToRow (K1 i a) where
-  gToRow (K1 x)= void (writeField x)
+  gToRow (K1 x) = void (writeField x)
 
 instance (ToField a) => ToField (Maybe a) where
   toField (Just val) = toField val
