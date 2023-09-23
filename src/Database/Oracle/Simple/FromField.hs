@@ -9,6 +9,9 @@
 
 module Database.Oracle.Simple.FromField where
 
+import Control.Exception
+import qualified Data.ByteString as BS
+import Data.Text.Encoding
 import Control.Monad
 import Data.Coerce
 import Data.Fixed
@@ -122,16 +125,31 @@ getWord64 = dpiData_getUint64
 getBool :: ReadDPIBuffer Bool
 getBool ptr = (== 1) <$> dpiData_getBool ptr
 
--- | Get Text from the data buffer
+-- | Get Text from the data buffer.
+-- Supports ASCII, UTF-8 and UTF-16 big- and little-endian encodings.
+-- Throws 'BytesDecodingError' if any other encoding is encountered.
 getText :: ReadDPIBuffer Text
-getText = fmap pack <$> getString
+getText = buildText <=< peek <=< dpiData_getBytes
+  where
+    buildText DPIBytes{..} = do
+      gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+      encoding <- peekCString dpiBytesEncoding
+      decodeFn <- case encoding of
+                      "ASCII" -> pure decodeASCII
+                      "UTF-8" -> pure decodeUtf8
+                      "UTF-16BE" -> pure decodeUtf16BE
+                      "UTF-16LE" -> pure decodeUtf16LE
+                      otherEnc -> throwIO $ BytesDecodingError otherEnc
+      pure $ decodeFn gotBytes
 
--- | Get String from the data buffer
+data BytesDecodingError = BytesDecodingError String
+  deriving Show
+
+instance Exception BytesDecodingError
+
+-- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
-getString = buildString <=< peek <=< dpiData_getBytes
- where
-  buildString DPIBytes{..} =
-    peekCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+getString = fmap unpack <$> getText
 
 -- | Get a `DPITimestamp` from the buffer
 getTimestamp :: ReadDPIBuffer DPITimestamp
