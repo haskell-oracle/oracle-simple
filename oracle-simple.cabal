@@ -23,7 +23,7 @@ executable tests
   main-is:
     Main.hs
   build-depends:
-    base < 5, oracle-simple, text, time, hspec, QuickCheck, quickcheck-instances
+    base < 5, ieee754, oracle-simple, text, time, hspec, QuickCheck, quickcheck-instances
   hs-source-dirs:
     test
   default-language:
