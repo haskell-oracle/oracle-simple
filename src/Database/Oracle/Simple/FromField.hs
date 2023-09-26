@@ -1,7 +1,7 @@
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -10,14 +10,14 @@
 module Database.Oracle.Simple.FromField where
 
 import Control.Exception
-import qualified Data.ByteString as BS
-import Data.Text.Encoding
 import Control.Monad
+import qualified Data.ByteString as BS
 import Data.Coerce
 import Data.Fixed
 import Data.Int
 import Data.Proxy
 import Data.Text
+import Data.Text.Encoding
 import Data.Time
 import Data.Word
 import Database.Oracle.Simple.Internal
@@ -73,14 +73,12 @@ instance FromField UTCTime where
 
 dpiTimeStampToUTCTime :: DPITimestamp -> UTCTime
 dpiTimeStampToUTCTime dpi =
-  let
-    DPITimestamp {..} = dpiTimeStampToUTCDPITimeStamp dpi
-    local = LocalTime d tod
-    d = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
-    tod = TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second + picos)
-    picos = MkFixed (fromIntegral fsecond * 1000) :: Pico
-  in
-    localTimeToUTC utc local
+  let DPITimestamp{..} = dpiTimeStampToUTCDPITimeStamp dpi
+      local = LocalTime d tod
+      d = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+      tod = TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second + picos)
+      picos = MkFixed (fromIntegral fsecond * 1000) :: Pico
+   in localTimeToUTC utc local
 
 -- | Encapsulates all information needed to parse a field as a Haskell value.
 newtype FieldParser a = FieldParser
@@ -127,25 +125,20 @@ getBool ptr = (== 1) <$> dpiData_getBool ptr
 
 -- | Get Text from the data buffer.
 -- Supports ASCII, UTF-8 and UTF-16 big- and little-endian encodings.
--- Throws 'BytesDecodingError' if any other encoding is encountered.
+-- Throws 'FieldParseError' if any other encoding is encountered.
 getText :: ReadDPIBuffer Text
 getText = buildText <=< peek <=< dpiData_getBytes
-  where
-    buildText DPIBytes{..} = do
-      gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
-      encoding <- peekCString dpiBytesEncoding
-      decodeFn <- case encoding of
-                      "ASCII" -> pure decodeASCII
-                      "UTF-8" -> pure decodeUtf8
-                      "UTF-16BE" -> pure decodeUtf16BE
-                      "UTF-16LE" -> pure decodeUtf16LE
-                      otherEnc -> throwIO $ BytesDecodingError otherEnc
-      pure $ decodeFn gotBytes
-
-data BytesDecodingError = BytesDecodingError String
-  deriving Show
-
-instance Exception BytesDecodingError
+ where
+  buildText DPIBytes{..} = do
+    gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+    encoding <- peekCString dpiBytesEncoding
+    decodeFn <- case encoding of
+      "ASCII" -> pure decodeASCII
+      "UTF-8" -> pure decodeUtf8
+      "UTF-16BE" -> pure decodeUtf16BE
+      "UTF-16LE" -> pure decodeUtf16LE
+      otherEnc -> throwIO $ ByteDecodeError otherEnc
+    pure $ decodeFn gotBytes
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
@@ -154,3 +147,14 @@ getString = fmap unpack <$> getText
 -- | Get a `DPITimestamp` from the buffer
 getTimestamp :: ReadDPIBuffer DPITimestamp
 getTimestamp = peek <=< dpiData_getTimestamp
+
+data FieldParseError
+  = -- | We encountered an encoding other than ASCII, UTF-8 or UTF-16
+    ByteDecodeError String
+  deriving (Show)
+
+instance Exception FieldParseError where
+  displayException (ByteDecodeError otherEnc) =
+    "Field Parsing Error: Encountered unsupported text encoding '"
+      <> otherEnc
+      <> "'. Supported encodings: ASCII, UTF-8, UTF-16BE, UTF-16LE."
