@@ -39,6 +39,7 @@ import Foreign.C.String
 import Foreign.C.Types
 import Foreign.Marshal.Utils
 import Foreign.Ptr
+import Foreign.Storable (sizeOf)
 import Foreign.Storable.Generic
 import GHC.Generics
 import GHC.TypeLits
@@ -205,8 +206,8 @@ toDPIPurity = fromIntegral . fromEnum
 
 data DPIModeConnClose
   = DPI_MODE_CONN_CLOSE_DEFAULT -- 0x0000
-  | DPI_MODE_CONN_CLOSE_DROP    -- 0x0001
-  | DPI_MODE_CONN_CLOSE_RETAG   -- 0x0002
+  | DPI_MODE_CONN_CLOSE_DROP -- 0x0001
+  | DPI_MODE_CONN_CLOSE_RETAG -- 0x0002
   deriving (Show, Eq)
 
 toDpiModeConnClose :: DPIModeConnClose -> CUInt
@@ -757,6 +758,11 @@ class HasDPINativeType a where
   dpiNativeType :: Proxy a -> DPINativeType
   -- ^ DPI native type for the Haskell type
 
+  dpiTypeOverride :: Proxy a -> Maybe DPIOracleType
+  -- ^ For types that require manual casting.
+  default dpiTypeOverride :: Proxy a -> Maybe DPIOracleType
+  dpiTypeOverride Proxy = Nothing
+
 instance HasDPINativeType Double where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_DOUBLE
 
@@ -772,8 +778,13 @@ instance HasDPINativeType String where
 instance HasDPINativeType Int64 where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_INT64
 
+instance HasDPINativeType Integer where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
+  dpiTypeOverride Proxy = Just DPI_ORACLE_TYPE_NUMBER
+
 instance HasDPINativeType Word64 where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_UINT64
+  dpiTypeOverride Proxy = Just DPI_ORACLE_TYPE_NUMBER
 
 instance HasDPINativeType Bool where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_BOOLEAN
@@ -783,6 +794,112 @@ instance (HasDPINativeType a) => HasDPINativeType (Maybe a) where
 
 instance HasDPINativeType Int where
   dpiNativeType Proxy = dpiNativeType (Proxy @Int64)
+
+data DPIOracleType
+  = DPI_ORACLE_TYPE_NONE
+  | DPI_ORACLE_TYPE_VARCHAR
+  | DPI_ORACLE_TYPE_NVARCHAR
+  | DPI_ORACLE_TYPE_CHAR
+  | DPI_ORACLE_TYPE_NCHAR
+  | DPI_ORACLE_TYPE_ROWID
+  | DPI_ORACLE_TYPE_RAW
+  | DPI_ORACLE_TYPE_NATIVE_FLOAT
+  | DPI_ORACLE_TYPE_NATIVE_DOUBLE
+  | DPI_ORACLE_TYPE_NATIVE_INT
+  | DPI_ORACLE_TYPE_NUMBER
+  | DPI_ORACLE_TYPE_DATE
+  | DPI_ORACLE_TYPE_TIMESTAMP
+  | DPI_ORACLE_TYPE_TIMESTAMP_TZ
+  | DPI_ORACLE_TYPE_TIMESTAMP_LTZ
+  | DPI_ORACLE_TYPE_INTERVAL_DS
+  | DPI_ORACLE_TYPE_INTERVAL_YM
+  | DPI_ORACLE_TYPE_CLOB
+  | DPI_ORACLE_TYPE_NCLOB
+  | DPI_ORACLE_TYPE_BLOB
+  | DPI_ORACLE_TYPE_BFILE
+  | DPI_ORACLE_TYPE_STMT
+  | DPI_ORACLE_TYPE_BOOLEAN
+  | DPI_ORACLE_TYPE_OBJECT
+  | DPI_ORACLE_TYPE_LONG_VARCHAR
+  | DPI_ORACLE_TYPE_LONG_RAW
+  | DPI_ORACLE_TYPE_NATIVE_UINT
+  | DPI_ORACLE_TYPE_JSON
+  | DPI_ORACLE_TYPE_JSON_OBJECT
+  | DPI_ORACLE_TYPE_JSON_ARRAY
+  | DPI_ORACLE_TYPE_UROWID
+  | DPI_ORACLE_TYPE_LONG_NVARCHAR
+  | DPI_ORACLE_TYPE_MAX
+
+dpiOracleTypeToUInt :: DPIOracleType -> CUInt
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NONE = 2000
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_VARCHAR = 2001
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NVARCHAR = 2002
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_CHAR = 2003
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NCHAR = 2004
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_ROWID = 2005
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_RAW = 2006
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NATIVE_FLOAT = 2007
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NATIVE_DOUBLE = 2008
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NATIVE_INT = 2009
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NUMBER = 2010
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_DATE = 2011
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_TIMESTAMP = 2012
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_TIMESTAMP_TZ = 2013
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_TIMESTAMP_LTZ = 2014
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_INTERVAL_DS = 2015
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_INTERVAL_YM = 2016
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_CLOB = 2017
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NCLOB = 2018
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_BLOB = 2019
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_BFILE = 2020
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_STMT = 2021
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_BOOLEAN = 2022
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_OBJECT = 2023
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_LONG_VARCHAR = 2024
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_LONG_RAW = 2025
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_NATIVE_UINT = 2026
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_JSON = 2027
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_JSON_OBJECT = 2028
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_JSON_ARRAY = 2029
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_UROWID = 2030
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_LONG_NVARCHAR = 2031
+dpiOracleTypeToUInt DPI_ORACLE_TYPE_MAX = 2032
+
+uintToDPIOracleType :: CUInt -> Maybe DPIOracleType
+uintToDPIOracleType 2000 = Just DPI_ORACLE_TYPE_NONE
+uintToDPIOracleType 2001 = Just DPI_ORACLE_TYPE_VARCHAR
+uintToDPIOracleType 2002 = Just DPI_ORACLE_TYPE_NVARCHAR
+uintToDPIOracleType 2003 = Just DPI_ORACLE_TYPE_CHAR
+uintToDPIOracleType 2004 = Just DPI_ORACLE_TYPE_NCHAR
+uintToDPIOracleType 2005 = Just DPI_ORACLE_TYPE_ROWID
+uintToDPIOracleType 2006 = Just DPI_ORACLE_TYPE_RAW
+uintToDPIOracleType 2007 = Just DPI_ORACLE_TYPE_NATIVE_FLOAT
+uintToDPIOracleType 2008 = Just DPI_ORACLE_TYPE_NATIVE_DOUBLE
+uintToDPIOracleType 2009 = Just DPI_ORACLE_TYPE_NATIVE_INT
+uintToDPIOracleType 2010 = Just DPI_ORACLE_TYPE_NUMBER
+uintToDPIOracleType 2011 = Just DPI_ORACLE_TYPE_DATE
+uintToDPIOracleType 2012 = Just DPI_ORACLE_TYPE_TIMESTAMP
+uintToDPIOracleType 2013 = Just DPI_ORACLE_TYPE_TIMESTAMP_TZ
+uintToDPIOracleType 2014 = Just DPI_ORACLE_TYPE_TIMESTAMP_LTZ
+uintToDPIOracleType 2015 = Just DPI_ORACLE_TYPE_INTERVAL_DS
+uintToDPIOracleType 2016 = Just DPI_ORACLE_TYPE_INTERVAL_YM
+uintToDPIOracleType 2017 = Just DPI_ORACLE_TYPE_CLOB
+uintToDPIOracleType 2018 = Just DPI_ORACLE_TYPE_NCLOB
+uintToDPIOracleType 2019 = Just DPI_ORACLE_TYPE_BLOB
+uintToDPIOracleType 2020 = Just DPI_ORACLE_TYPE_BFILE
+uintToDPIOracleType 2021 = Just DPI_ORACLE_TYPE_STMT
+uintToDPIOracleType 2022 = Just DPI_ORACLE_TYPE_BOOLEAN
+uintToDPIOracleType 2023 = Just DPI_ORACLE_TYPE_OBJECT
+uintToDPIOracleType 2024 = Just DPI_ORACLE_TYPE_LONG_VARCHAR
+uintToDPIOracleType 2025 = Just DPI_ORACLE_TYPE_LONG_RAW
+uintToDPIOracleType 2026 = Just DPI_ORACLE_TYPE_NATIVE_UINT
+uintToDPIOracleType 2027 = Just DPI_ORACLE_TYPE_JSON
+uintToDPIOracleType 2028 = Just DPI_ORACLE_TYPE_JSON_OBJECT
+uintToDPIOracleType 2029 = Just DPI_ORACLE_TYPE_JSON_ARRAY
+uintToDPIOracleType 2030 = Just DPI_ORACLE_TYPE_UROWID
+uintToDPIOracleType 2031 = Just DPI_ORACLE_TYPE_LONG_NVARCHAR
+uintToDPIOracleType 2032 = Just DPI_ORACLE_TYPE_MAX
+uintToDPIOracleType _ = Nothing
 
 data DPINativeType
   = DPI_NATIVE_TYPE_INT64
@@ -985,3 +1102,39 @@ isHealthy (Connection fptr) =
 -- Structurally equivalent to 'Data.Functor.Identity.Identity'.
 newtype Only a = Only {fromOnly :: a}
   deriving stock (Eq, Ord, Read, Show, Generic)
+
+-- // define type of data to use for the specified column (1 based)
+-- DPI_EXPORT int dpiStmt_defineValue(dpiStmt *stmt, uint32_t pos,
+--         dpiOracleTypeNum oracleTypeNum, dpiNativeTypeNum nativeTypeNum,
+--         uint32_t size, int sizeIsBytes, dpiObjectType *objType);
+
+foreign import ccall unsafe "dpiStmt_defineValue"
+  dpiStmt_defineValue
+    :: DPIStmt
+    -- ^ dpiStmt *stmt
+    -> CUInt
+    -- ^ uint32_t pos
+    -> CUInt
+    -- ^ dpiOracleTypeNum oracleTypeNum
+    -> CUInt
+    -- ^ dpiNativeTypeNum nativeTypeNum
+    -> CUInt
+    -- ^ uint32_t size
+    -> CInt
+    -- ^ int sizeIsBytes
+    -> Ptr ()
+    -- ^ dpiObjectType *objType
+    -> IO CInt
+
+dpiDefineValue :: DPIStmt -> Column -> DPIOracleType -> DPINativeType -> IO ()
+dpiDefineValue stmt col oracleType nativeType = do
+  throwOracleError
+    =<< dpiStmt_defineValue
+      stmt
+      (fromIntegral $ getColumn col)
+      (dpiOracleTypeToUInt oracleType)
+      (dpiNativeTypeToUInt nativeType)
+      128
+      0
+      nullPtr
+  pure ()

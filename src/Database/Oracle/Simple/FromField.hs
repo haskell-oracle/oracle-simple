@@ -9,6 +9,7 @@
 
 module Database.Oracle.Simple.FromField where
 
+import Data.Serialize as SZ
 import Control.Exception
 import Control.Monad
 import qualified Data.ByteString as BS
@@ -60,6 +61,9 @@ instance FromField Bool where
 
 instance FromField Int where
   fromField = fromIntegral <$> fromField @Int64
+
+instance FromField Integer where
+  fromField = FieldParser getInteger
 
 instance (FromField a) => FromField (Maybe a) where
   fromField = FieldParser $ \ptr -> do
@@ -142,6 +146,15 @@ getText = buildText <=< peek <=< dpiData_getBytes
       `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
               )
 
+getInteger :: ReadDPIBuffer Integer
+getInteger = buildText <=< peek <=< dpiData_getBytes
+ where
+  buildText DPIBytes{..} = do
+    gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+    case SZ.decode @Integer gotBytes of
+      Right int -> pure int
+      Left err -> throwIO IntegerDecodeError
+
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
 getString = fmap unpack <$> getText
@@ -156,6 +169,8 @@ data FieldParseError
     UnsupportedEncoding {fpeOtherEncoding :: String}
   | -- | Failed to decode bytes using stated encoding
     ByteDecodeError {fpeEncoding :: String, fpeErrorMsg :: String}
+  | -- | Failed to decode Integer
+    IntegerDecodeError
   deriving (Show)
 
 instance Exception FieldParseError where

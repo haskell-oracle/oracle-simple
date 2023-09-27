@@ -13,6 +13,7 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# LANGUAGE AllowAmbiguousTypes #-}
 
 module Database.Oracle.Simple.FromRow where
 
@@ -31,6 +32,10 @@ class FromRow a where
   fromRow :: RowParser a
   default fromRow :: (GFromRow (Rep a), Generic a) => RowParser a
   fromRow = to <$> gFromRow
+  
+  defineColumnTypes :: RowParser a
+  default defineColumnTypes :: (GFromRow (Rep a), Generic a) => RowParser a
+  defineColumnTypes = to <$> gDefineColumnTypes
 
 instance FromField a => FromRow (Only a)
 
@@ -74,26 +79,33 @@ instance
 
 class GFromRow f where
   gFromRow :: RowParser (f a)
+  gDefineColumnTypes :: RowParser (f a)
 
 instance (GFromRow m) => GFromRow (D1 i m) where
   gFromRow = M1 <$> gFromRow
+  gDefineColumnTypes = M1 <$> gDefineColumnTypes
 
 instance (GFromRow m) => GFromRow (C1 i m) where
   gFromRow = M1 <$> gFromRow
+  gDefineColumnTypes = M1 <$> gDefineColumnTypes
 
 instance (GFromRow m) => GFromRow (S1 i m) where
   gFromRow = M1 <$> gFromRow
+  gDefineColumnTypes = M1 <$> gDefineColumnTypes
 
 instance (GFromRow l, GFromRow r) => GFromRow (l :*: r) where
   gFromRow = (:*:) <$> gFromRow <*> gFromRow
+  gDefineColumnTypes = (:*:) <$> gDefineColumnTypes <*> gDefineColumnTypes
 
 instance (TypeError ('Text "Sum types not supported")) => GFromRow (l :+: r) where
   gFromRow = error "Sum types not supported"
+  gDefineColumnTypes = error "Sum types not supported"
 
 instance (FromField a) => GFromRow (K1 i a) where
   gFromRow = K1 <$> readField
+  gDefineColumnTypes = K1 <$> defineColTypes
 
-newtype RowParser a = RowParser {runRowParser :: DPIStmt -> StateT Word32 IO a}
+newtype RowParser a = RowParser {runRowParser :: DPIStmt -> StateT Column IO a}
 
 instance Functor RowParser where
   fmap f g = RowParser $ \dpiStmt -> f <$> runRowParser g dpiStmt
@@ -114,6 +126,22 @@ instance Monad RowParser where
 getRow :: forall a. (FromRow a) => DPIStmt -> IO a
 getRow stmt = evalStateT (runRowParser fromRow stmt) 0
 
+rDefineColumnTypes :: forall a. (FromRow a) => DPIStmt -> IO ()
+rDefineColumnTypes stmt = void $ evalStateT (runRowParser @a defineColumnTypes stmt) 0
+
+defineColTypes :: FromField a => RowParser a
+defineColTypes = defineColTypes' fromField 
+
+defineColTypes' :: forall a. FromField a => FieldParser a -> RowParser a
+defineColTypes' FieldParser{..} = RowParser $ \dpiStmt -> do
+  pos <- modify (+ 1) >> get
+  liftIO $ do
+    let nativeType = dpiNativeType (Proxy @a)
+    -- if the type needs it, perform a manual cast
+    whenJust (dpiTypeOverride (Proxy @a)) $ \oracleType -> dpiDefineValue dpiStmt pos oracleType nativeType
+  pure undefined
+ where whenJust mg f = maybe (pure ()) f mg
+
 -- | Derive a @RowParser@ for a field at the specified column position.
 readField :: (FromField a) => RowParser a
 readField = fieldWith fromField
@@ -124,11 +152,11 @@ fieldWith :: forall a. (FromField a) => FieldParser a -> RowParser a
 fieldWith FieldParser{..} = RowParser $ \dpiStmt -> do
   pos <- modify (+ 1) >> get
   liftIO $ do
-    (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral pos)
-    let typ = dpiNativeType (Proxy @a)
-    unless (gotType == typ) $
+    let nativeType = dpiNativeType (Proxy @a)
+    (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral $ getColumn pos)
+    unless (gotType == nativeType) $
       throwIO $
-        TypeMismatch typ gotType (Column pos)
+        TypeMismatch nativeType gotType pos
     readDPIDataBuffer dataBuf
 
 data RowParseError
