@@ -137,8 +137,10 @@ getText = buildText <=< peek <=< dpiData_getBytes
       "UTF-8" -> pure decodeUtf8
       "UTF-16BE" -> pure decodeUtf16BE
       "UTF-16LE" -> pure decodeUtf16LE
-      otherEnc -> throwIO $ ByteDecodeError otherEnc
-    pure $ decodeFn gotBytes
+      otherEnc -> throwIO $ UnsupportedEncoding otherEnc
+    evaluate (decodeFn gotBytes)
+      `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
+              )
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
@@ -148,13 +150,18 @@ getString = fmap unpack <$> getText
 getTimestamp :: ReadDPIBuffer DPITimestamp
 getTimestamp = peek <=< dpiData_getTimestamp
 
+-- | Errors encountered when parsing a database field.
 data FieldParseError
   = -- | We encountered an encoding other than ASCII, UTF-8 or UTF-16
-    ByteDecodeError String
+    UnsupportedEncoding {fpeOtherEncoding :: String}
+  | -- | Failed to decode bytes using stated encoding
+    ByteDecodeError {fpeEncoding :: String, fpeErrorMsg :: String}
   deriving (Show)
 
 instance Exception FieldParseError where
-  displayException (ByteDecodeError otherEnc) =
-    "Field Parsing Error: Encountered unsupported text encoding '"
-      <> otherEnc
+  displayException UnsupportedEncoding{..} =
+    "Field Parse Error: Encountered unsupported text encoding '"
+      <> fpeOtherEncoding
       <> "'. Supported encodings: ASCII, UTF-8, UTF-16BE, UTF-16LE."
+  displayException ByteDecodeError{..} =
+    "Field Parse Error: Failed to decode bytes as " <> fpeEncoding <> ": " <> fpeErrorMsg
