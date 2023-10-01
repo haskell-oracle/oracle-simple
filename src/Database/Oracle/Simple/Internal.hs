@@ -791,6 +791,7 @@ instance HasDPINativeType Bool where
 
 instance (HasDPINativeType a) => HasDPINativeType (Maybe a) where
   dpiNativeType Proxy = dpiNativeType (Proxy @a)
+  dpiTypeOverride Proxy = dpiTypeOverride (Proxy @a)
 
 instance HasDPINativeType Int where
   dpiNativeType Proxy = dpiNativeType (Proxy @Int64)

@@ -1,14 +1,14 @@
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
 
 module Database.Oracle.Simple.ToField where
 
 import Data.Fixed
-import Data.Time
 import Data.Int
 import Data.Text
+import Data.Time
 import Database.Oracle.Simple.Internal
 
 class (HasDPINativeType a) => ToField a where
@@ -37,22 +37,23 @@ instance ToField UTCTime where
 
 utcTimeToDPITimestamp :: UTCTime -> DPITimestamp
 utcTimeToDPITimestamp utcTime = dpiTimeStampToUTCDPITimeStamp dpiTs
-  where
-    ZonedTime {..} = utcToZonedTime utc utcTime
-    LocalTime {..} = zonedTimeToLocalTime
-    (year, month, day) = toGregorian localDay
-    TimeOfDay {..} = localTimeOfDay
-    TimeZone {..} = zonedTimeZone
-    (seconds, fractionalSeconds) = properFraction todSec
-    (hourOffset, minuteOffset) = timeZoneMinutes `quotRem` 60
-    dpiTs = DPITimestamp
-      { year           = fromIntegral year
-      , month          = fromIntegral month
-      , day            = fromIntegral day
-      , hour           = fromIntegral todHour
-      , minute         = fromIntegral todMin
-      , second         = seconds
-      , fsecond        = truncate (fractionalSeconds * 1e9)
-      , tzHourOffset   = fromIntegral hourOffset
+ where
+  ZonedTime{..} = utcToZonedTime utc utcTime
+  LocalTime{..} = zonedTimeToLocalTime
+  (year, month, day) = toGregorian localDay
+  TimeOfDay{..} = localTimeOfDay
+  TimeZone{..} = zonedTimeZone
+  (seconds, fractionalSeconds) = properFraction todSec
+  (hourOffset, minuteOffset) = timeZoneMinutes `quotRem` 60
+  dpiTs =
+    DPITimestamp
+      { year = fromIntegral year
+      , month = fromIntegral month
+      , day = fromIntegral day
+      , hour = fromIntegral todHour
+      , minute = fromIntegral todMin
+      , second = seconds
+      , fsecond = truncate (fractionalSeconds * 1e9)
+      , tzHourOffset = fromIntegral hourOffset
       , tzMinuteOffset = fromIntegral minuteOffset
       }

@@ -9,7 +9,6 @@
 
 module Database.Oracle.Simple.FromField where
 
-import Data.Serialize as SZ
 import Control.Exception
 import Control.Monad
 import qualified Data.ByteString as BS
@@ -17,6 +16,7 @@ import Data.Coerce
 import Data.Fixed
 import Data.Int
 import Data.Proxy
+import Data.Serialize as SZ
 import Data.Text
 import Data.Text.Encoding
 import Data.Time
@@ -132,28 +132,30 @@ getBool ptr = (== 1) <$> dpiData_getBool ptr
 -- Throws 'FieldParseError' if any other encoding is encountered.
 getText :: ReadDPIBuffer Text
 getText = buildText <=< peek <=< dpiData_getBytes
- where
-  buildText DPIBytes{..} = do
-    gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
-    encoding <- peekCString dpiBytesEncoding
-    decodeFn <- case encoding of
-      "ASCII" -> pure decodeASCII
-      "UTF-8" -> pure decodeUtf8
-      "UTF-16BE" -> pure decodeUtf16BE
-      "UTF-16LE" -> pure decodeUtf16LE
-      otherEnc -> throwIO $ UnsupportedEncoding otherEnc
-    evaluate (decodeFn gotBytes)
-      `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
-              )
 
+buildText :: DPIBytes -> IO Text
+buildText DPIBytes{..} = do
+  gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+  encoding <- peekCString dpiBytesEncoding
+  decodeFn <- case encoding of
+    "ASCII" -> pure decodeASCII
+    "UTF-8" -> pure decodeUtf8
+    "UTF-16BE" -> pure decodeUtf16BE
+    "UTF-16LE" -> pure decodeUtf16LE
+    otherEnc -> throwIO $ UnsupportedEncoding otherEnc
+  evaluate (decodeFn gotBytes)
+    `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
+            )
+
+-- TODO iffy!
 getInteger :: ReadDPIBuffer Integer
-getInteger = buildText <=< peek <=< dpiData_getBytes
+getInteger = buildInteger <=< peek <=< dpiData_getBytes
  where
-  buildText DPIBytes{..} = do
-    gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
-    case SZ.decode @Integer gotBytes of
-      Right int -> pure int
-      Left err -> throwIO IntegerDecodeError
+  buildInteger dpiBytes = do
+    asText <- buildText dpiBytes
+    if asText == mempty
+      then pure 0
+      else pure $ read @Integer (unpack asText)
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
