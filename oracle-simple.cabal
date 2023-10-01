@@ -17,7 +17,13 @@ flag default_paths
   default:
     True
   description:
-    Use default system paths for odpic
+    use default paths for odpic as set via `make install` from source
+
+flag apt_paths
+  default:
+    False
+  description:
+    use paths for odpic as set by libodpic4 and odpic-dev from apt
 
 executable tests
   main-is:
@@ -46,13 +52,17 @@ library
     src
   extra-libraries:
     odpic
-  if flag(default_paths) && os(linux)
-    includes:
-      /opt/oracle/include/dpi.h
-    include-dirs:
-      /opt/oracle/include
-    extra-lib-dirs:
-      /opt/oracle/lib
+  if os(linux)
+    if flag(default_paths)
+      include-dirs:
+        /usr/local/include
+      extra-lib-dirs:
+        /usr/local/lib
+    if flag(apt_paths)
+      include-dirs:
+        /usr/include
+      extra-lib-dirs:
+        /usr/lib/x86_64-linux-gnu
   if flag(default_paths) && os(osx)
     includes:
       /usr/local/include/dpi.h
