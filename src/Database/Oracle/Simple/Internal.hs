@@ -22,6 +22,7 @@
 
 module Database.Oracle.Simple.Internal where
 
+import Data.Scientific
 import Control.Exception
 import Control.Monad
 import Control.Monad.State.Strict
@@ -784,6 +785,10 @@ instance HasDPINativeType Int64 where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_INT64
 
 instance HasDPINativeType Integer where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
+  dpiTypeOverride Proxy = Just DPI_ORACLE_TYPE_NUMBER
+
+instance HasDPINativeType Scientific where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
   dpiTypeOverride Proxy = Just DPI_ORACLE_TYPE_NUMBER
 

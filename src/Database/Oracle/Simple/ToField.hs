@@ -5,6 +5,7 @@
 
 module Database.Oracle.Simple.ToField where
 
+import Data.Scientific
 import Data.Word
 import Data.Fixed
 import Data.Int
@@ -35,6 +36,9 @@ instance ToField Int where
 
 instance ToField Integer where
  toField = fmap AsBytes . mkDPIBytesUTF8 . show
+
+instance ToField Scientific where
+  toField = fmap AsBytes . mkDPIBytesUTF8 . formatScientific Fixed Nothing
 
 instance ToField DPITimestamp where
   toField = pure . AsTimestamp
