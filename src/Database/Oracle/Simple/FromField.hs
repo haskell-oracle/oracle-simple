@@ -6,18 +6,20 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Database.Oracle.Simple.FromField where
 
 import Control.Exception
 import Control.Monad
 import qualified Data.ByteString as BS
+import Data.Char as C
 import Data.Coerce
 import Data.Fixed
 import Data.Int
 import Data.Proxy
-import Data.Serialize as SZ
-import Data.Text
+import Data.Scientific
+import Data.Text as T
 import Data.Text.Encoding
 import Data.Time
 import Data.Word
@@ -64,6 +66,9 @@ instance FromField Int where
 
 instance FromField Integer where
   fromField = FieldParser getInteger
+
+instance FromField Scientific where
+  fromField = FieldParser getScientific
 
 instance (FromField a) => FromField (Maybe a) where
   fromField = FieldParser $ \ptr -> do
@@ -147,15 +152,54 @@ buildText DPIBytes{..} = do
     `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
             )
 
--- TODO iffy!
+-- | Reads zero-scale arbitrary-precision numbers.
 getInteger :: ReadDPIBuffer Integer
 getInteger = buildInteger <=< peek <=< dpiData_getBytes
  where
   buildInteger dpiBytes = do
     asText <- buildText dpiBytes
-    if asText == mempty
+    if asText == mempty -- throw error: use Maybe
       then pure 0
-      else pure $ read @Integer (unpack asText)
+      else parseInteger asText
+
+parseInteger :: Text -> IO Integer
+parseInteger numText = do
+  let (preDec, postDec) = T.break (== '.') numText
+  unless (T.null postDec || postDec == ".0") $ throwIO NonZeroScale -- it's okay if values are .0??
+  unless (allDigits preDec) $ throwIO (BadInput numText)
+  evaluate (read $ T.unpack preDec) `catch` (\(e :: SomeException) -> throwIO IntegerParseFailure)
+
+parseScientific :: Text -> IO Scientific
+parseScientific numText = do
+  let (preDec, postDec') = T.break (== '.') numText
+  unless (allDigits preDec) $ throwIO (BadInput preDec)
+  postDec <-
+    if T.null postDec'
+      then pure mempty
+      else do
+        let postDec'' = T.tail postDec'
+        unless (allDigits postDec'') $ throwIO (BadInput postDec'')
+        when (T.null postDec'') $ throwIO DecimalPointError
+        pure postDec''
+  let exp = -(T.length postDec)
+  coeff <- evaluate (read $ T.unpack (preDec <> postDec)) `catch` (\(e :: SomeException) -> throwIO IntegerParseFailure)
+  pure $ scientific coeff exp
+
+allDigits = T.all C.isNumber
+
+data E = BadInput Text | DecimalPointError | IntegerParseFailure | NonZeroScale deriving (Show)
+
+instance Exception E
+
+-- | Get Scientific from the DPIData buffer
+getScientific :: ReadDPIBuffer Scientific
+getScientific = buildInteger <=< peek <=< dpiData_getBytes
+ where
+  buildInteger dpiBytes = do
+    asText <- buildText dpiBytes
+    if asText == mempty -- todo throw error; use Maybe here
+      then pure 0
+      else parseScientific asText
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
