@@ -2,6 +2,7 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE NumericUnderscores #-}
+{-# LANGUAGE OverloadedStrings #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -12,12 +13,13 @@ module Database.Oracle.Simple.FromField where
 import Control.Exception
 import Control.Monad
 import qualified Data.ByteString as BS
+import Data.Char as C
 import Data.Coerce
 import Data.Fixed
 import Data.Int
 import Data.Proxy
-import Data.Serialize as SZ
-import Data.Text
+import Data.Scientific
+import Data.Text as T
 import Data.Text.Encoding
 import Data.Time
 import Data.Word
@@ -64,6 +66,9 @@ instance FromField Int where
 
 instance FromField Integer where
   fromField = FieldParser getInteger
+
+instance FromField Scientific where
+  fromField = FieldParser getScientific
 
 instance (FromField a) => FromField (Maybe a) where
   fromField = FieldParser $ \ptr -> do
@@ -147,15 +152,55 @@ buildText DPIBytes{..} = do
     `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
             )
 
--- TODO iffy!
-getInteger :: ReadDPIBuffer Integer
-getInteger = buildInteger <=< peek <=< dpiData_getBytes
- where
-  buildInteger dpiBytes = do
-    asText <- buildText dpiBytes
-    if asText == mempty
-      then pure 0
-      else pure $ read @Integer (unpack asText)
+-- | Parse a value via Text.
+-- Throws if empty text is encountered, do not use this for values where
+-- empty text could be returned.
+viaNonNullableText :: (Text -> IO a) -> ReadDPIBuffer a
+viaNonNullableText parser = buildNonNullable <=< peek <=< dpiData_getBytes
+  where
+    buildNonNullable dpiBytes = do
+      asText <- buildText dpiBytes
+      if asText == mempty
+        then throw UnexpectedNull
+        else parser asText
+
+data NullableError = UnexpectedNull deriving Show
+
+instance Exception NullableError where
+  displayException UnexpectedNull = "Expected non-null data in field"
+
+parseInteger :: Text -> IO Integer
+parseInteger numText = do
+  let (preDec, postDec) = T.break (== '.') numText
+  unless (T.null postDec || postDec == ".0") $ throwIO NonZeroScale -- it's okay if values are .0??
+  unless (allDigits preDec) $ throwIO (BadInput numText)
+  evaluate (read $ T.unpack preDec) `catch` (\(e :: SomeException) -> throwIO IntegerParseFailure)
+
+parseScientific :: Text -> IO Scientific
+parseScientific numText = do
+  let (preDec, postDec') = T.break (== '.') numText
+  unless (allDigits preDec) $ throwIO (BadInput preDec)
+  postDec <-
+    if T.null postDec'
+      then pure mempty
+      else do
+        let postDec'' = T.tail postDec'
+        unless (allDigits postDec'') $ throwIO (BadInput postDec'')
+        when (T.null postDec'') $ throwIO DecimalPointError
+        pure postDec''
+  let exp = -(T.length postDec)
+  coeff <- evaluate (read $ T.unpack (preDec <> postDec)) `catch` (\(e :: SomeException) -> throwIO IntegerParseFailure)
+  pure $ scientific coeff exp
+
+allDigits = T.all C.isNumber
+
+data E = BadInput Text | DecimalPointError | IntegerParseFailure | NonZeroScale deriving (Show)
+
+instance Exception E
+
+-- | Get Scientific from the DPIData buffer
+getScientific :: ReadDPIBuffer Scientific
+getScientific = viaNonNullableText parseScientific
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
@@ -164,6 +209,10 @@ getString = fmap unpack <$> getText
 -- | Get a `DPITimestamp` from the buffer
 getTimestamp :: ReadDPIBuffer DPITimestamp
 getTimestamp = peek <=< dpiData_getTimestamp
+
+-- | Get an Integer from the buffer
+getInteger :: ReadDPIBuffer Integer
+getInteger = viaNonNullableText parseInteger
 
 -- | Errors encountered when parsing a database field.
 data FieldParseError

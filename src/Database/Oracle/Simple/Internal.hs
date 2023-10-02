@@ -22,6 +22,7 @@
 
 module Database.Oracle.Simple.Internal where
 
+import Data.Scientific
 import Control.Exception
 import Control.Monad
 import Control.Monad.State.Strict
@@ -754,11 +755,8 @@ getQueryValue stmt pos = do
           pure (typ, dataBuffer)
 
 -- | Class of all Haskell types that have an equivalent DPI Native type.
--- DPI Native Types are how ODPIC abstracts Oracle types for us.
--- By default, we expect the table column to be read as a value of type 'DPINativeType'.
--- If we wish to change this behaviour, and specify an explicit cast between an internal
--- ('DPIOracleType') and external ('DPINativeType') type, the 'dpiTypeOverride' instance
--- must be set to a non-Nothing value.
+-- 'dpiTypeOverride' must be set with the native Oracle type of the column
+-- for types that need to be manually cast (swayed away from the default cast).
 class HasDPINativeType a where
   dpiNativeType :: Proxy a -> DPINativeType
   -- ^ DPI native type for the Haskell type
@@ -783,10 +781,17 @@ instance HasDPINativeType String where
 instance HasDPINativeType Int64 where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_INT64
 
+-- | Overrides default cast to DPI_NATIVE_TYPE_DOUBLE or DPI_NATIVE_TYPE_INT64
 instance HasDPINativeType Integer where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
   dpiTypeOverride Proxy = Just DPI_ORACLE_TYPE_NUMBER
 
+-- | Overrides default cast to DPI_NATIVE_TYPE_DOUBLE
+instance HasDPINativeType Scientific where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_BYTES
+  dpiTypeOverride Proxy = Just DPI_ORACLE_TYPE_NUMBER
+
+-- | Overrides default cast to DPI_NATIVE_TYPE_DOUBLE or DPI_NATIVE_TYPE_INT64
 instance HasDPINativeType Word64 where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_UINT64
   dpiTypeOverride Proxy = Just DPI_ORACLE_TYPE_NUMBER
@@ -803,7 +808,6 @@ instance HasDPINativeType Int where
 
 -- | Data types used by table columns in an Oracle database.
 -- Also includes types used by PL/SQL that are not used by Oracle database columns.
--- These are also referred to as internal types by the OCI documentation.
 -- ODPI-C will convert these types to an external type ('DPINativeTypeNum') before
 -- reading values from the database, or do the opposite while writing values to the
 -- database.
