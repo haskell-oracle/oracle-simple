@@ -5,6 +5,7 @@
 
 module Database.Oracle.Simple.ToField where
 
+import Data.Word
 import Data.Fixed
 import Data.Int
 import Data.Text
@@ -26,8 +27,14 @@ instance ToField String where
 instance ToField Int64 where
   toField = pure . AsInt64
 
+instance ToField Word64 where
+  toField = pure . AsUInt64
+
 instance ToField Int where
   toField = pure . AsInt64 . fromIntegral
+
+instance ToField Integer where
+ toField = fmap AsBytes . mkDPIBytesUTF8 . show
 
 instance ToField DPITimestamp where
   toField = pure . AsTimestamp

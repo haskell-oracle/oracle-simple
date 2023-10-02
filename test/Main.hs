@@ -13,12 +13,9 @@ import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
 import Test.QuickCheck.Instances ()
+import Data.Int
 
 import Database.Oracle.Simple
-
-foo :: IO [Only (Maybe Word64)]
-foo = withConnection params $ \conn ->
-  query_ conn "select sample_integer from sample_table"
 
 main :: IO ()
 main = hspec spec
@@ -85,3 +82,15 @@ spec = do
         property $ \tod day (nanos :: Nano) -> do
           let utc = UTCTime day $ timeOfDayToTime tod{todSec = realToFrac nanos}
           utc `shouldBe` dpiTimeStampToUTCTime (utcTimeToDPITimestamp utc)
+
+    describe "Arbitrary-precision numeric types" $ do
+      it "should roundtrip maximum and minimum integral values that the database can hold" $ \conn -> do
+        let maxVal :: Integer
+            maxVal = 10^38 - 1 -- maxinum bound of NUMBER(38,0)
+        let minVal :: Integer
+            minVal = -(10^38 - 1) -- minimum bound of NUMBER(38,0)
+        _ <- execute_ conn "create table integer_table(integer_value number(38,0))"
+        _ <- executeMany conn "insert into integer_table values (:1)" [Only maxVal, Only minVal]
+        [gotMaxVal, gotMinVal] <- fmap fromOnly <$> query_ conn "select * from integer_table"
+        _ <- execute_ conn "drop table integer_table"
+        [gotMaxVal, gotMinVal] `shouldBe` [maxVal, minVal]

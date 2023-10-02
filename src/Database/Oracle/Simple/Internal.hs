@@ -753,7 +753,12 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
 
--- | Class of all Haskell types that have an equivalent DPI native type.
+-- | Class of all Haskell types that have an equivalent DPI Native type.
+-- DPI Native Types are how ODPIC abstracts Oracle types for us.
+-- By default, we expect the table column to be read as a value of type 'DPINativeType'.
+-- If we wish to change this behaviour, and specify an explicit cast between an internal
+-- ('DPIOracleType') and external ('DPINativeType') type, the 'dpiTypeOverride' instance
+-- must be set to a non-Nothing value.
 class HasDPINativeType a where
   dpiNativeType :: Proxy a -> DPINativeType
   -- ^ DPI native type for the Haskell type
@@ -796,6 +801,12 @@ instance (HasDPINativeType a) => HasDPINativeType (Maybe a) where
 instance HasDPINativeType Int where
   dpiNativeType Proxy = dpiNativeType (Proxy @Int64)
 
+-- | Data types used by table columns in an Oracle database.
+-- Also includes types used by PL/SQL that are not used by Oracle database columns.
+-- These are also referred to as internal types by the OCI documentation.
+-- ODPI-C will convert these types to an external type ('DPINativeTypeNum') before
+-- reading values from the database, or do the opposite while writing values to the
+-- database.
 data DPIOracleType
   = DPI_ORACLE_TYPE_NONE
   | DPI_ORACLE_TYPE_VARCHAR
