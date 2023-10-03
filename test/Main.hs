@@ -1,9 +1,9 @@
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 module Main where
 
 import Control.Monad.IO.Class    (liftIO)
@@ -87,12 +87,12 @@ spec = do
 
     describe "Roundtrip tests" $ do
       it "Should round trip random values from a table" $ \conn -> do
-        property $ \x@TestTable{..} -> do
-          execute_ conn "create table test (a varchar(300), b number (12,0), c number (12,0), d number (12,0) null, e timestamp, f number (38,28))"
-          execute conn "insert into test values (:1,:2,:3,:4,:5,:6)" x
-          y  <- query_ conn "select * from test"
+        property $ \expected@TestTable{..} -> do
+          execute_ conn "create table test (a varchar(300), b number (12,0), c number (12,0), d number (12,0) null, e timestamp (9), f number (38,28))"
+          execute conn "insert into test values (:1,:2,:3,:4,:5,:6)" expected
+          actual <- query_ conn "select * from test"
           execute_ conn "drop table test"
-          [x] `shouldBe` y
+          actual `shouldBe` [expected]
 
 data TestTable
   = TestTable
