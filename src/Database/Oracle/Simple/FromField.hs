@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Database.Oracle.Simple.FromField where
 
@@ -172,31 +173,28 @@ instance Exception NullableError where
 parseInteger :: Text -> IO Integer
 parseInteger numText = do
   let (preDec, postDec) = T.break (== '.') numText
-  unless (T.null postDec || postDec == ".0") $ throwIO NonZeroScale -- it's okay if values are .0??
-  unless (allDigits preDec) $ throwIO (BadInput numText)
-  evaluate (read $ T.unpack preDec) `catch` (\(e :: SomeException) -> throwIO IntegerParseFailure)
+  unless (T.null postDec || postDec == ".0") $ throwIO UnexpectedNonZeroScale
+  unless (allDigits preDec) $ throwIO (NonNumericInput $ T.unpack numText)
+  evaluate (read $ T.unpack preDec) `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure (T.unpack preDec))
 
 parseScientific :: Text -> IO Scientific
 parseScientific numText = do
   let (preDec, postDec') = T.break (== '.') numText
-  unless (allDigits preDec) $ throwIO (BadInput preDec)
+  unless (allDigits preDec) $ throwIO (NonNumericInput $ T.unpack preDec)
   postDec <-
     if T.null postDec'
       then pure mempty
       else do
         let postDec'' = T.tail postDec'
-        unless (allDigits postDec'') $ throwIO (BadInput postDec'')
+        unless (allDigits postDec'') $ throwIO (NonNumericInput $ T.unpack postDec'')
         when (T.null postDec'') $ throwIO DecimalPointError
         pure postDec''
   let exp = -(T.length postDec)
-  coeff <- evaluate (read $ T.unpack (preDec <> postDec)) `catch` (\(e :: SomeException) -> throwIO IntegerParseFailure)
+  coeff <- evaluate (read $ T.unpack (preDec <> postDec)) `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure(T.unpack (preDec <> postDec)))
   pure $ scientific coeff exp
 
+allDigits :: Text -> Bool
 allDigits = T.all C.isNumber
-
-data E = BadInput Text | DecimalPointError | IntegerParseFailure | NonZeroScale deriving (Show)
-
-instance Exception E
 
 -- | Get Scientific from the DPIData buffer
 getScientific :: ReadDPIBuffer Scientific
@@ -220,14 +218,30 @@ data FieldParseError
     UnsupportedEncoding {fpeOtherEncoding :: String}
   | -- | Failed to decode bytes using stated encoding
     ByteDecodeError {fpeEncoding :: String, fpeErrorMsg :: String}
-  | -- | Failed to decode Integer
-    IntegerDecodeError
+  | -- | Encountered non-numeric characters where none were expected
+    NonNumericInput { fpeNonNumericInput :: String }
+  | -- | Encountered nothing after decimal point
+    DecimalPointError
+  | -- | Failed to parse text as Integer 
+    IntegerParseFailure { fpeInput :: String }
+  | -- | Input was a number with non-zero scale
+    UnexpectedNonZeroScale
   deriving (Show)
 
 instance Exception FieldParseError where
   displayException UnsupportedEncoding{..} =
-    "Field Parse Error: Encountered unsupported text encoding '"
+    "Encountered unsupported text encoding '"
       <> fpeOtherEncoding
-      <> "'. Supported encodings: ASCII, UTF-8, UTF-16BE, UTF-16LE."
+      <> "'. Supported encodings: ASCII, UTF-8, UTF-16BE, UTF-16LE"
   displayException ByteDecodeError{..} =
-    "Field Parse Error: Failed to decode bytes as " <> fpeEncoding <> ": " <> fpeErrorMsg
+    "Failed to decode bytes as " <> fpeEncoding <> ": " <> fpeErrorMsg
+  displayException NonNumericInput{..} =
+    "Encountered non-numeric characters while trying to parse a numeric field for input '"
+      <> fpeNonNumericInput
+      <> "'"
+  displayException DecimalPointError =
+    "Malformed numeric input, encountered nothing after decimal point"
+  displayException IntegerParseFailure{..} =
+    "Failed to parse input '" <> fpeInput <> "' as integer"
+  displayException UnexpectedNonZeroScale =
+    "Unexpected non-zero scale, perhaps use Double or Scientific for this field"
