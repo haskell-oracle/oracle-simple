@@ -138,8 +138,7 @@ castColumnType' proxy = RowParser $ \dpiStmt -> do
     let nativeType = dpiNativeType proxy
     -- if the type needs it, perform a manual cast
     whenJust (dpiTypeOverride proxy) $ \oracleType -> dpiDefineValue dpiStmt pos oracleType nativeType
- where
-  whenJust mg f = maybe (pure ()) f mg
+ where whenJust mg f = maybe (pure ()) f mg
 
 -- | Derive a @RowParser@ for a field at the specified column position.
 readField :: (FromField a) => RowParser a
@@ -156,7 +155,7 @@ fieldWith FieldParser{..} = RowParser $ \dpiStmt -> do
     unless (gotType == nativeType) $
       throwIO $
         TypeMismatch nativeType gotType pos
-    readDPIDataBuffer dataBuf
+    readDPIDataBuffer dataBuf `catch` (\(e :: FieldParseError) -> throwIO $ FieldParseError (displayException e) pos)
 
 data RowParseError
   = -- | We encountered a type that we were not expecting.
@@ -168,10 +167,17 @@ data RowParseError
     , column :: Column
     -- ^ Column position where type mismatch was encountered (1-indexed)
     }
+  | -- | Failed to parse a field
+    FieldParseError
+    { errorMessage :: String
+    -- ^ Error message returned by the field parser
+    , column :: Column
+    -- ^ Column position where the field parse error occured (1-indexed)
+    }
   deriving (Show)
 
 instance Exception RowParseError where
-  displayException (TypeMismatch{..}) =
+  displayException TypeMismatch{..} =
     "Row parse error due to type mismatch: At column "
       <> show column
       <> ", expected "
@@ -179,3 +185,4 @@ instance Exception RowParseError where
       <> " but got "
       <> show gotType
       <> "."
+  displayException FieldParseError{..} = "Field parsing error at column " <> show column <> ": " <> errorMessage

@@ -21,11 +21,11 @@ import Database.Oracle.Simple
 
 foo :: IO ()
 foo = withConnection params $ \conn -> do
-  _ <- execute_ conn "create table num_table (a number(38,20))"
-  _ <- execute conn "insert into num_table values (:1)" (Only (scientific ((10^38) - 1) (-20)))
-  [res] <- query_ @(Only Scientific) conn "select * from num_table"
+  _ <- execute_ conn "create table num_table (a number(38,0))"
+  _ <- execute conn "insert into num_table values (:1)" (Only @Integer 12)
+  [res] <- query_ @(Only Integer) conn "select * from num_table"
   _ <- execute_ conn "drop table num_table"
-  putStrLn $ formatScientific Sc.Fixed Nothing (fromOnly res)
+  putStrLn $ show $ fromOnly res
 
 main :: IO ()
 main = hspec spec
