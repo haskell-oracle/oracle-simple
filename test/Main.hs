@@ -17,7 +17,7 @@ main :: IO ()
 main = hspec spec
 
 params :: ConnectionParams
-params = ConnectionParams "username" "password" "localhost/XEPDB1"
+params = ConnectionParams "username" "password" "localhost/devdb"
 
 spec :: Spec
 spec = do

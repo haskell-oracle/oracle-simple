@@ -1,9 +1,12 @@
 version: "3"
 services:
-  oracle-xe:
-    container_name: oracle-xe
-    image: gvenzl/oracle-xe:18.4.0
+  dev-db:
+    container_name: dev-db
+    image: gvenzl/oracle-free:23-slim-faststart
+    volumes:
+      - ./db:/container-entrypoint-startdb.d
     environment:
+      ORACLE_DATABASE: devdb
       ORACLE_PASSWORD: password
       APP_USER: username
       APP_USER_PASSWORD: password
