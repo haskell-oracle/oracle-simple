@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE OverloadedStrings #-}
+{-# LANGUAGE ViewPatterns #-}
 
 module Database.Oracle.Simple.FromField where
 
@@ -20,7 +20,8 @@ import Data.Fixed
 import Data.Int
 import Data.Proxy
 import Data.Scientific
-import Data.Text as T
+import Data.Text (Text)
+import qualified Data.Text as T
 import Data.Text.Encoding
 import Data.Time
 import Data.Word
@@ -30,6 +31,7 @@ import Foreign.C.Types
 import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
+import Text.Regex.TDFA
 
 -- | A type that may be parsed from a database field.
 class (HasDPINativeType a) => FromField a where
@@ -158,51 +160,48 @@ buildText DPIBytes{..} = do
 -- empty text could be returned.
 viaNonNullableText :: (Text -> IO a) -> ReadDPIBuffer a
 viaNonNullableText parser = buildNonNullable <=< peek <=< dpiData_getBytes
-  where
-    buildNonNullable dpiBytes = do
-      asText <- buildText dpiBytes
-      if asText == mempty
-        then throw UnexpectedNull
-        else parser asText
+ where
+  buildNonNullable dpiBytes = do
+    asText <- buildText dpiBytes
+    if asText == mempty
+      then throw UnexpectedNull
+      else parser asText
 
-data NullableError = UnexpectedNull deriving Show
+-- | Use a regular expression to parse an input into tokens, and use the tokens
+-- to build a value of type @a@.
+parseTokensFromPattern :: String -> TokenParser a -> Text -> IO a
+parseTokensFromPattern pattern tokenParser text =
+  let (_, _, _, tokens) = match text pattern
+   in tokenParser tokens
+ where
+  match :: Text -> String -> (String, String, String, [String])
+  match (T.unpack -> str) pat = str =~ pat
 
-instance Exception NullableError where
-  displayException UnexpectedNull = "Expected non-null data in field"
+-- | Takes a list of tokens and builds a value of type @a@.
+type TokenParser a = ([String] -> IO a)
 
-parseInteger :: Text -> IO Integer
-parseInteger numText = do
-  let (preDec, postDec) = T.break (== '.') numText
-  unless (T.null postDec || postDec == ".0") $ throwIO UnexpectedNonZeroScale
-  unless (allDigits preDec) $ throwIO (NonNumericInput $ T.unpack numText)
-  evaluate (read $ T.unpack preDec) `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure (T.unpack preDec))
+-- Although nothing stops us from @read@ing whatever odpi gives us directly, we do some validation
+-- to return more specific error messages. And to make us feel like we're taking some effort.
+parseInteger :: TokenParser Integer
+parseInteger (integral : []) =
+  evaluate (read integral) `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure integral)
+parseInteger _ = throwIO BadFormat
 
-parseScientific :: Text -> IO Scientific
-parseScientific numText = do
-  let (preDec, postDec') = T.break (== '.') numText
-  unless (allDigits preDec) $ throwIO (NonNumericInput $ T.unpack preDec)
-  postDec <-
-    if T.null postDec'
-      then pure mempty
-      else do
-        let postDec'' = T.tail postDec'
-        unless (allDigits postDec'') $ throwIO (NonNumericInput $ T.unpack postDec'')
-        when (T.null postDec'') $ throwIO DecimalPointError
-        pure postDec''
-  let exp = -(T.length postDec)
-  coeff <- evaluate (read $ T.unpack (preDec <> postDec)) `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure(T.unpack (preDec <> postDec)))
+parseScientific :: TokenParser Scientific
+parseScientific (integral : fractional : []) = do
+  let exp = -(length fractional)
+  let coeffStr = integral <> fractional
+  coeff <- evaluate (read coeffStr) `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure coeffStr)
   pure $ scientific coeff exp
-
-allDigits :: Text -> Bool
-allDigits = T.all C.isNumber
+scientificFromTokens _ = throwIO BadFormat
 
 -- | Get Scientific from the DPIData buffer
 getScientific :: ReadDPIBuffer Scientific
-getScientific = viaNonNullableText parseScientific
+getScientific = viaNonNullableText $ parseTokensFromPattern "^([0-9]+)\\.([0-9]+)$" parseScientific
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
-getString = fmap unpack <$> getText
+getString = fmap T.unpack <$> getText
 
 -- | Get a `DPITimestamp` from the buffer
 getTimestamp :: ReadDPIBuffer DPITimestamp
@@ -210,7 +209,7 @@ getTimestamp = peek <=< dpiData_getTimestamp
 
 -- | Get an Integer from the buffer
 getInteger :: ReadDPIBuffer Integer
-getInteger = viaNonNullableText parseInteger
+getInteger = viaNonNullableText $ parseTokensFromPattern "^([0-9]+)$" parseInteger
 
 -- | Errors encountered when parsing a database field.
 data FieldParseError
@@ -218,30 +217,24 @@ data FieldParseError
     UnsupportedEncoding {fpeOtherEncoding :: String}
   | -- | Failed to decode bytes using stated encoding
     ByteDecodeError {fpeEncoding :: String, fpeErrorMsg :: String}
-  | -- | Encountered non-numeric characters where none were expected
-    NonNumericInput { fpeNonNumericInput :: String }
-  | -- | Encountered nothing after decimal point
-    DecimalPointError
-  | -- | Failed to parse text as Integer 
-    IntegerParseFailure { fpeInput :: String }
-  | -- | Input was a number with non-zero scale
-    UnexpectedNonZeroScale
+  | -- | Failed to parse text as Integer
+    IntegerParseFailure {fpeInput :: String}
+  | -- | Failed to parse input
+    BadFormat
+  | -- | Unexpected null value
+    UnexpectedNull
   deriving (Show)
 
 instance Exception FieldParseError where
   displayException UnsupportedEncoding{..} =
-    "Encountered unsupported text encoding '"
+    "Unsupported text encoding '"
       <> fpeOtherEncoding
       <> "'. Supported encodings: ASCII, UTF-8, UTF-16BE, UTF-16LE"
   displayException ByteDecodeError{..} =
     "Failed to decode bytes as " <> fpeEncoding <> ": " <> fpeErrorMsg
-  displayException NonNumericInput{..} =
-    "Encountered non-numeric characters while trying to parse a numeric field for input '"
-      <> fpeNonNumericInput
-      <> "'"
-  displayException DecimalPointError =
-    "Malformed numeric input, encountered nothing after decimal point"
   displayException IntegerParseFailure{..} =
     "Failed to parse input '" <> fpeInput <> "' as integer"
-  displayException UnexpectedNonZeroScale =
-    "Unexpected non-zero scale, perhaps use Double or Scientific for this field"
+  displayException BadFormat =
+    "Bad format: text field did not contain what the Oracle native type suggested it did"
+  displayException UnexpectedNull =
+    "Encountered a null value for a field that should not contain any"

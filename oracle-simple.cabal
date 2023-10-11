@@ -47,7 +47,7 @@ library
     , Database.Oracle.Simple.Query
     , Database.Oracle.Simple.Execute
   build-depends:
-    base < 5, bytestring, derive-storable, scientific, text, mtl, time, QuickCheck
+    base < 5, bytestring, derive-storable, scientific, text, mtl, time, QuickCheck, regex-tdfa
   hs-source-dirs:
     src
   extra-libraries:
