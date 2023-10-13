@@ -46,6 +46,7 @@ library
     , Database.Oracle.Simple.ToField
     , Database.Oracle.Simple.Query
     , Database.Oracle.Simple.Execute
+    , Database.Oracle.Simple.Pool
   build-depends:
     base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck
   hs-source-dirs:
