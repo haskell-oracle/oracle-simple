@@ -31,7 +31,7 @@ import Foreign.C.Types
 import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
-import Text.Regex.TDFA
+import Text.Regex.PCRE
 
 -- | A type that may be parsed from a database field.
 class (HasDPINativeType a) => FromField a where
@@ -167,12 +167,14 @@ viaNonNullableText parser = buildNonNullable <=< peek <=< dpiData_getBytes
       then throw UnexpectedNull
       else parser asText
 
--- | Use a regular expression to parse an input into tokens, and use the tokens
--- to build a value of type @a@.
+-- | Use a regular expression (POSIX) to parse an input into tokens, and
+-- use the tokens to build a value of type @a@.
 parseTokensFromPattern :: String -> TokenParser a -> Text -> IO a
-parseTokensFromPattern pattern tokenParser text =
+parseTokensFromPattern pattern tokenParser text = do
+  putStrLn $ "Got text: " <> show text
   let (_, _, _, tokens) = match text pattern
-   in tokenParser tokens
+  putStrLn $ "Got tokens: " <> show tokens
+  tokenParser tokens
  where
   match :: Text -> String -> (String, String, String, [String])
   match (T.unpack -> str) pat = str =~ pat
@@ -180,24 +182,17 @@ parseTokensFromPattern pattern tokenParser text =
 -- | Takes a list of tokens and builds a value of type @a@.
 type TokenParser a = ([String] -> IO a)
 
--- Although nothing stops us from @read@ing whatever odpi gives us directly, we do some validation
--- to return more specific error messages. And to make us feel like we're taking some effort.
-parseInteger :: TokenParser Integer
-parseInteger (integral : []) =
-  evaluate (read integral) `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure integral)
-parseInteger _ = throwIO BadFormat
+-- | Get Scientific from the DPIData buffer
+getScientific :: ReadDPIBuffer Scientific
+getScientific = viaNonNullableText $ parseTokensFromPattern "^(-?)([0-9]+)(?:\\.([0-9]+))?$" parseScientific
 
 parseScientific :: TokenParser Scientific
-parseScientific (integral : fractional : []) = do
+parseScientific (sign : integral : fractional : []) = do
   let exp = -(length fractional)
   let coeffStr = integral <> fractional
   coeff <- evaluate (read coeffStr) `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure coeffStr)
-  pure $ scientific coeff exp
-scientificFromTokens _ = throwIO BadFormat
-
--- | Get Scientific from the DPIData buffer
-getScientific :: ReadDPIBuffer Scientific
-getScientific = viaNonNullableText $ parseTokensFromPattern "^([0-9]+)\\.([0-9]+)$" parseScientific
+  pure $ (adjustSign sign) $ scientific coeff exp
+parseScientific _ = throwIO BadFormat
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
@@ -207,9 +202,27 @@ getString = fmap T.unpack <$> getText
 getTimestamp :: ReadDPIBuffer DPITimestamp
 getTimestamp = peek <=< dpiData_getTimestamp
 
+-- Note on parsing integers: Although nothing stops us from @read@ing whatver odpi gives
+-- us directly, we try to match the input against the pattern we expect it to be in for the
+-- following reasons:
+-- i. we can return more specific errors
+-- ii. which could be useful if odpi gives us bad data
+-- iii. or a HasDPINativeType instance is misconfigured, and,
+-- iv. finally, it feels more 'correct' that just calling read straightaway
+
 -- | Get an Integer from the buffer
 getInteger :: ReadDPIBuffer Integer
-getInteger = viaNonNullableText $ parseTokensFromPattern "^([0-9]+)$" parseInteger
+getInteger = viaNonNullableText $ parseTokensFromPattern "^(-?)([0-9]+)$" parseInteger
+
+parseInteger :: TokenParser Integer
+parseInteger (sign : integral : []) =
+  evaluate (adjustSign sign $ read integral)
+    `catch` (\(e :: SomeException) -> throwIO $ IntegerParseFailure integral)
+parseInteger _ = throwIO BadFormat
+
+{-# INLINE adjustSign #-}
+adjustSign :: Num a => String -> (a -> a)
+adjustSign sign = if sign == "-" then negate else abs
 
 -- | Errors encountered when parsing a database field.
 data FieldParseError
