@@ -31,7 +31,8 @@ runJsonDemo (Connection fptr) = do
 
 main :: IO ()
 main = withPool params $ \pool -> withPoolConnection pool $ \conn -> do 
-  runJsonDemo conn
+  _ <- query_ @(Only JsonWrapper) conn "select * from json_demo"
+  pure ()
 
 params :: ConnectionParams
 params = ConnectionParams "username" "password" "localhost/devdb"

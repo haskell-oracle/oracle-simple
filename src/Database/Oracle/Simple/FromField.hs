@@ -26,6 +26,7 @@ import Foreign.C.Types
 import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
+import Database.Oracle.Simple.JSON
 
 -- | A type that may be parsed from a database field.
 class (HasDPINativeType a) => FromField a where
@@ -54,6 +55,9 @@ instance FromField Int64 where
 
 instance FromField Word64 where
   fromField = FieldParser getWord64
+
+instance FromField JsonWrapper where
+  fromField = FieldParser getJSON 
 
 instance FromField Bool where
   fromField = FieldParser getBool
@@ -115,6 +119,13 @@ getFloat = coerce <$> dpiData_getFloat
 getInt64 :: ReadDPIBuffer Int64
 getInt64 = dpiData_getInt64
 
+getJSON :: ReadDPIBuffer JsonWrapper
+getJSON ptr = do
+  jsonPtr <- dpiData_getJSON ptr
+  jsonVal <- runGetValue jsonPtr
+  walkNode jsonVal
+  pure $ JsonWrapper ()
+
 -- | Get a Word64 value from the data buffer.
 getWord64 :: ReadDPIBuffer Word64
 getWord64 = dpiData_getUint64
@@ -165,3 +176,9 @@ instance Exception FieldParseError where
       <> "'. Supported encodings: ASCII, UTF-8, UTF-16BE, UTF-16LE."
   displayException ByteDecodeError{..} =
     "Field Parse Error: Failed to decode bytes as " <> fpeEncoding <> ": " <> fpeErrorMsg
+
+newtype JsonWrapper = JsonWrapper { unwrap :: () }
+  deriving Show
+
+instance HasDPINativeType JsonWrapper where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_JSON
