@@ -73,6 +73,7 @@ library
       /usr/local/lib
   c-sources:
     cbits/oracle-helpers.c
+    cbits/json.c
   default-language:
     Haskell2010
 

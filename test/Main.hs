@@ -2,6 +2,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 module Main where
 
+import Foreign hiding (withPool, Pool)
 import Foreign.C.Types
 import Data.Fixed
 import Control.Monad.IO.Class (liftIO)
@@ -10,11 +11,27 @@ import Test.QuickCheck
 import Test.QuickCheck.Instances ()
 import Data.Time
 import Test.Hspec
+import Foreign.C
 
 import Database.Oracle.Simple
 
+foreign import ccall "run_json_demo"
+  run_json_demo :: Ptr DPIConn -> Ptr CString -> IO CInt
+
+runJsonDemo :: Connection -> IO ()
+runJsonDemo (Connection fptr) = do
+  withForeignPtr fptr $ \conn -> do
+    alloca $ \sPtrPtr -> do
+      run_json_demo conn sPtrPtr
+      sPtr <- peek sPtrPtr
+      str <- peekCString sPtr
+      free sPtr
+      putStrLn str
+      pure ()
+
 main :: IO ()
-main = withPool params $ hspec . spec
+main = withPool params $ \pool -> withPoolConnection pool $ \conn -> do 
+  runJsonDemo conn
 
 params :: ConnectionParams
 params = ConnectionParams "username" "password" "localhost/devdb"
