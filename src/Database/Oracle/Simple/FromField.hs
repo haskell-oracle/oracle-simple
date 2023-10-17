@@ -9,6 +9,9 @@
 
 module Database.Oracle.Simple.FromField where
 
+import qualified Data.Aeson as Aeson
+import qualified Data.List as L
+import Foreign
 import Control.Exception
 import Control.Monad
 import qualified Data.ByteString as BS
@@ -56,7 +59,7 @@ instance FromField Int64 where
 instance FromField Word64 where
   fromField = FieldParser getWord64
 
-instance FromField JsonWrapper where
+instance FromField Aeson.Value where
   fromField = FieldParser getJSON 
 
 instance FromField Bool where
@@ -119,12 +122,8 @@ getFloat = coerce <$> dpiData_getFloat
 getInt64 :: ReadDPIBuffer Int64
 getInt64 = dpiData_getInt64
 
-getJSON :: ReadDPIBuffer JsonWrapper
-getJSON ptr = do
-  jsonPtr <- dpiData_getJSON ptr
-  jsonVal <- runGetValue jsonPtr
-  walkNode jsonVal
-  pure $ JsonWrapper ()
+getJSON :: ReadDPIBuffer Aeson.Value 
+getJSON = parseNode <=< peek <=< getValue <=< dpiData_getJSON
 
 -- | Get a Word64 value from the data buffer.
 getWord64 :: ReadDPIBuffer Word64
@@ -139,8 +138,9 @@ getBool ptr = (== 1) <$> dpiData_getBool ptr
 -- Throws 'FieldParseError' if any other encoding is encountered.
 getText :: ReadDPIBuffer Text
 getText = buildText <=< peek <=< dpiData_getBytes
- where
-  buildText DPIBytes{..} = do
+
+buildText :: DPIBytes -> IO Text
+buildText DPIBytes{..} = do
     gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
     encoding <- peekCString dpiBytesEncoding
     decodeFn <- case encoding of
@@ -179,6 +179,3 @@ instance Exception FieldParseError where
 
 newtype JsonWrapper = JsonWrapper { unwrap :: () }
   deriving Show
-
-instance HasDPINativeType JsonWrapper where
-  dpiNativeType Proxy = DPI_NATIVE_TYPE_JSON

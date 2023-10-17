@@ -49,7 +49,7 @@ library
     , Database.Oracle.Simple.Pool
     , Database.Oracle.Simple.JSON
   build-depends:
-    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, aeson
+    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, aeson, scientific, vector
   hs-source-dirs:
     src
   extra-libraries:

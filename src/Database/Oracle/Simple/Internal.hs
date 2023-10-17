@@ -22,6 +22,7 @@
 
 module Database.Oracle.Simple.Internal where
 
+import qualified Data.Aeson as Aeson
 import Control.Exception
 import Control.Monad
 import Control.Monad.State.Strict
@@ -598,6 +599,9 @@ instance HasDPINativeType DPITimestamp where
 instance HasDPINativeType UTCTime where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_TIMESTAMP
 
+instance HasDPINativeType Aeson.Value where
+  dpiNativeType Proxy = DPI_NATIVE_TYPE_JSON
+
 -- struct dpiAppContext {
 --     const char *namespaceName;
 --     uint32_t namespaceNameLength;
@@ -884,7 +888,7 @@ instance Storable WriteBuffer where
 
   alignment _ = 8
 
-  peek = error "WriteBuffer: peek not supported!"
+  peek = error "WriteBuffer.peek: not implemented!"
 
   poke ptr (AsInt64 intVal) = poke (castPtr ptr) intVal
   poke ptr (AsUInt64 word64Val) = poke (castPtr ptr) word64Val

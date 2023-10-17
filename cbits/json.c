@@ -21,7 +21,28 @@
 
 // #define SQL "select * from json_demo"
 
-void displayJson(dpiJsonNode *node, FILE *jsonOut)
+
+dpiJsonObject *getJsonObject(dpiDataBuffer *buffer)
+{
+  return &buffer->asJsonObject;
+}
+
+dpiJsonArray *getJsonArray(dpiDataBuffer *buffer)
+{
+  return &buffer->asJsonArray;
+}
+
+dpiBytes *getDpiBytes(dpiDataBuffer *buffer)
+{
+  return &buffer->asBytes;
+}
+
+int dpiDataBuffer_getAsBoolean(dpiDataBuffer *buffer)
+{
+  return buffer->asBoolean;
+}
+
+int displayJson(dpiJsonNode *node, FILE *jsonOut)
 {
     dpiTimestamp *timestamp;
     dpiJsonArray *array;
@@ -30,7 +51,7 @@ void displayJson(dpiJsonNode *node, FILE *jsonOut)
 
     switch (node->nativeTypeNum) {
 
-        /* json 'object' type */
+        /* 'object' type */
         case DPI_NATIVE_TYPE_JSON_OBJECT:
             obj = &node->value->asJsonObject;
             fprintf(jsonOut, "{");
@@ -44,7 +65,7 @@ void displayJson(dpiJsonNode *node, FILE *jsonOut)
             fprintf(jsonOut, "}");
             break;
 
-        /* json 'array' type */
+        /* 'array' type */
         case DPI_NATIVE_TYPE_JSON_ARRAY:
             array = &node->value->asJsonArray;
             fprintf(jsonOut, "[");
@@ -56,45 +77,46 @@ void displayJson(dpiJsonNode *node, FILE *jsonOut)
             fprintf(jsonOut, "]");
             break;
 
-        /* json 'string' type */
+        /* 'string' type */
         case DPI_NATIVE_TYPE_BYTES:
             fprintf(jsonOut, "\"%.*s\"", node->value->asBytes.length,
                     node->value->asBytes.ptr);
             break;
 
-        /* json 'number' type */
+        /* 'number' type */
         case DPI_NATIVE_TYPE_DOUBLE:
             fprintf(jsonOut, "%g", node->value->asDouble);
             break;
 
-        /* json 'true' and 'false' literals */
+        /* 'true' and 'false' literals */
         case DPI_NATIVE_TYPE_BOOLEAN:
             fprintf(jsonOut, "%s", node->value->asBoolean ? "true" : "false");
             break;
         
-        /* json 'null' literal */
+        /* 'null' literal */
         case DPI_NATIVE_TYPE_NULL:
             fprintf(jsonOut, "null");
             break;
 
         /*
-         * non-standard timestamp type!
-         * not a part of ECMA-404, in which timestamps are represented as strings
-         * we format timestamps as ISO-8601 since that's the closest to a JSON standard
+         * ODPI Timestamp type
+         * We format this as a JSON string in an ISO 8601 format
          */
         case DPI_NATIVE_TYPE_TIMESTAMP:
             timestamp = &node->value->asTimestamp;
-            fprintf(jsonOut, "%.4d-%.2d-%.2d %.2d:%.2d:%.2d", timestamp->year,
+            fprintf(jsonOut, "\"%.4d-%.2d-%.2dT%.2d:%.2d:%.2d.%3d\"", timestamp->year,
                     timestamp->month, timestamp->day, timestamp->hour,
-                    timestamp->minute, timestamp->second);
+                    timestamp->minute, timestamp->second, timestamp->fsecond);
             break;
 
         default:
-            printf("Unhandled native type %u", node->nativeTypeNum);
+            return -1;
     }
+
+    return 0;
 }
 
-void displayJsonRunner(dpiJsonNode *node, char **jsonStr) {
+int displayJsonRunner(dpiJsonNode *node, char **jsonStr) {
 
   FILE *jsonOut = tmpfile();
   displayJson(node, jsonOut);
@@ -111,9 +133,11 @@ void displayJsonRunner(dpiJsonNode *node, char **jsonStr) {
       fread(buffer, 1, length, jsonOut);
     }
     fclose(jsonOut); // deletes temp file
+    *jsonStr = buffer;
+    return length;
   }
 
-  *jsonStr = buffer;
+
 }
 
 int run_json_demo(dpiConn *conn, char **jsonStr)

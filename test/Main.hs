@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 module Main where
 
 import Foreign hiding (withPool, Pool)
@@ -12,6 +13,7 @@ import Test.QuickCheck.Instances ()
 import Data.Time
 import Test.Hspec
 import Foreign.C
+import Data.Aeson as Aeson
 
 import Database.Oracle.Simple
 
@@ -31,8 +33,8 @@ runJsonDemo (Connection fptr) = do
 
 main :: IO ()
 main = withPool params $ \pool -> withPoolConnection pool $ \conn -> do 
-  _ <- query_ @(Only JsonWrapper) conn "select * from json_demo"
-  pure ()
+  [res] <- query_ @(Only Aeson.Value) conn "select * from json_demo"
+  putStrLn $ show res
 
 params :: ConnectionParams
 params = ConnectionParams "username" "password" "localhost/devdb"
