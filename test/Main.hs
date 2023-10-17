@@ -28,14 +28,14 @@ foo = withConnection params $ \conn -> do
   putStrLn $ formatScientific Sc.Fixed Nothing (fromOnly res)
 
 main :: IO ()
-main = hspec spec
+main = withPool params $ hspec . spec
 
 params :: ConnectionParams
 params = ConnectionParams "username" "password" "localhost/devdb"
 
-spec :: Spec
-spec = do
-  around (withConnection params) $ do
+spec :: Pool -> Spec
+spec pool = do
+  around (withPoolConnection pool) $ do
     describe "SELECT tests" $ do
       it "Should select timestamp from Oracle" $ \conn -> do
         currentDay <- utctDay <$> getCurrentTime
@@ -51,12 +51,12 @@ spec = do
         (`shouldBe` True) =<< isHealthy conn
 
     describe "DPITimeStamp tests" $ do
-      it "Should roundtrip DPITimestamp through UTCTime" $ \conn -> do
+      it "Should roundtrip DPITimestamp through UTCTime" $ \_ -> do
         property $ \dpiTimestamp -> do
           utcTimeToDPITimestamp (dpiTimeStampToUTCTime dpiTimestamp)
             `shouldBe` dpiTimeStampToUTCDPITimeStamp dpiTimestamp
 
-      it "Idempotency of dpiTimeStampToUTCDPITimeStamp " $ \conn -> do
+      it "Idempotency of dpiTimeStampToUTCDPITimeStamp " $ \_ -> do
         property $ \dpi -> do
           dpiTimeStampToUTCDPITimeStamp (dpiTimeStampToUTCDPITimeStamp dpi)
             `shouldBe` dpiTimeStampToUTCDPITimeStamp dpi
