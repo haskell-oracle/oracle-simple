@@ -1,11 +1,12 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Database.Oracle.Simple.JSON where
+module Database.Oracle.Simple.JSON () where
 
 import Control.Monad ((<=<))
 import qualified Data.Aeson as Aeson
@@ -13,31 +14,36 @@ import Data.Aeson.KeyMap as KeyMap
 import Data.ByteString (packCStringLen)
 import qualified Data.ByteString.Char8 as C8
 import Data.List as L
+import Data.Proxy (Proxy (Proxy))
+import Data.Scientific (fromFloatDigits)
 import Data.String (fromString)
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vector as Vector
 import Foreign (Ptr, Storable, alloca, peek, peekArray)
-import Foreign.C (CInt (CInt), CString, CUInt (CUInt), peekCStringLen)
+import Foreign.C (CDouble (CDouble), CInt (CInt), CString, CUInt (CUInt), peekCStringLen)
 import Foreign.Storable.Generic (GStorable)
 import GHC.Generics (Generic)
-import Data.Proxy (Proxy(Proxy))
 
-import Database.Oracle.Simple.FromField (FromField(fromField), ReadDPIBuffer, FieldParser(FieldParser))
+import Database.Oracle.Simple.FromField (FieldParser (FieldParser), FromField (fromField), ReadDPIBuffer)
 import Database.Oracle.Simple.Internal
   ( DPIBytes (DPIBytes, dpiBytesLength, dpiBytesPtr)
   , DPIData
   , DPINativeType
     ( DPI_NATIVE_TYPE_BOOLEAN
     , DPI_NATIVE_TYPE_BYTES
+    , DPI_NATIVE_TYPE_DOUBLE
+    , DPI_NATIVE_TYPE_JSON
     , DPI_NATIVE_TYPE_JSON_ARRAY
     , DPI_NATIVE_TYPE_JSON_OBJECT
-    , DPI_NATIVE_TYPE_NULL, DPI_NATIVE_TYPE_JSON
+    , DPI_NATIVE_TYPE_NULL
     )
+  , HasDPINativeType (dpiNativeType)
   , ReadBuffer
-  , uintToDPINativeType, HasDPINativeType(dpiNativeType)
+  , dpiData_getDouble
+  , uintToDPINativeType
   )
 
-instance {-# OVERLAPPABLE #-} Aeson.FromJSON a => HasDPINativeType a where
+instance Aeson.FromJSON a => HasDPINativeType a where
   dpiNativeType Proxy = DPI_NATIVE_TYPE_JSON
 
 instance {-# OVERLAPPABLE #-} Aeson.FromJSON a => FromField a where
@@ -47,8 +53,8 @@ getJson :: Aeson.FromJSON a => ReadDPIBuffer a
 getJson = fromValue <=< buildValue <=< peek <=< dpiJson_getValue <=< dpiData_getJson
  where
   fromValue value = case Aeson.fromJSON value of
-                      Aeson.Error msg -> error msg
-                      Aeson.Success a -> pure a
+    Aeson.Error msg -> error msg
+    Aeson.Success a -> pure a
 
 newtype DPIJson = DPIJson (Ptr DPIJson)
   deriving (Show, Eq)
@@ -88,27 +94,32 @@ foreign import ccall "dpiJson_getValue"
 
 dpiJson_getValue :: DPIJson -> IO (Ptr DPIJsonNode)
 dpiJson_getValue dpiJson = alloca $ \ptr -> do
-  dpiJson_getValue' dpiJson 1 ptr
+  dpiJson_getValue' dpiJson dpiJsonOptions_numberAsString ptr
   peek ptr
+ where
+  dpiJsonOptions_numberAsString = 0x01
 
-foreign import ccall "getJsonObject"
-  getJsonObject :: Ptr ReadBuffer -> IO (Ptr DPIJsonObject)
+foreign import ccall "dpiDataBuffer_getAsJsonObject"
+  dpiDataBuffer_getAsJsonObject :: Ptr ReadBuffer -> IO (Ptr DPIJsonObject)
 
-foreign import ccall "getJsonArray"
-  getJsonArray :: Ptr ReadBuffer -> IO (Ptr DPIJsonArray)
+foreign import ccall "dpiDataBuffer_getAsJsonArray"
+  dpiDataBuffer_getAsJsonArray :: Ptr ReadBuffer -> IO (Ptr DPIJsonArray)
 
-foreign import ccall "getDpiBytes"
-  getBytes :: Ptr ReadBuffer -> IO (Ptr DPIBytes)
+foreign import ccall "dpiDataBuffer_getAsBytes"
+  dpiDataBuffer_getAsBytes :: Ptr ReadBuffer -> IO (Ptr DPIBytes)
 
 foreign import ccall "dpiDataBuffer_getAsBoolean"
   dpiDataBuffer_getAsBoolean :: Ptr ReadBuffer -> IO CInt
+
+foreign import ccall "dpiDataBuffer_getAsDouble"
+  dpiDataBuffer_getAsDouble :: Ptr ReadBuffer -> IO CDouble
 
 buildValue :: DPIJsonNode -> IO Aeson.Value
 buildValue DPIJsonNode{..} = do
   case uintToDPINativeType djnNativeTypeNumber of
     -- object
     Just DPI_NATIVE_TYPE_JSON_OBJECT -> do
-      DPIJsonObject{..} <- peek =<< getJsonObject djnValue
+      DPIJsonObject{..} <- peek =<< dpiDataBuffer_getAsJsonObject djnValue
       djoFieldNamesArray <- peekArray (fromIntegral djoNumFields) djoFieldNames
       djoFieldNameLengthsArray <- (fmap fromIntegral) <$> peekArray (fromIntegral djoNumFields) djoFieldNameLengths
       keys <- mapM (fmap fromString . peekCStringLen) (L.zip djoFieldNamesArray djoFieldNameLengthsArray)
@@ -117,13 +128,13 @@ buildValue DPIJsonNode{..} = do
 
     -- array
     Just DPI_NATIVE_TYPE_JSON_ARRAY -> do
-      DPIJsonArray{..} <- peek =<< getJsonArray djnValue
+      DPIJsonArray{..} <- peek =<< dpiDataBuffer_getAsJsonArray djnValue
       values <- mapM buildValue =<< peekArray (fromIntegral djaNumElements) djaElements
       pure $ Aeson.Array $ Vector.fromList values
 
     -- string and number
     Just DPI_NATIVE_TYPE_BYTES -> do
-      DPIBytes{..} <- peek =<< getBytes djnValue
+      DPIBytes{..} <- peek =<< dpiDataBuffer_getAsBytes djnValue
       bytes <- packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
 
       case djnOracleTypeNumber of
@@ -132,12 +143,16 @@ buildValue DPIJsonNode{..} = do
         -- for all strings
         _ -> pure $ Aeson.String (decodeUtf8 bytes)
 
+    -- this case shouldn't fire as we're setting dpiJson_getValue to return numbers as bytes
+    Just DPI_NATIVE_TYPE_DOUBLE -> do
+      doubleVal <- dpiDataBuffer_getAsDouble djnValue
+      pure $ Aeson.Number $ fromFloatDigits doubleVal
+
     -- true or false literals
-    Just DPI_NATIVE_TYPE_BOOLEAN -> pure . Aeson.Bool . (== 1) =<< dpiDataBuffer_getAsBoolean djnValue 
+    Just DPI_NATIVE_TYPE_BOOLEAN -> pure . Aeson.Bool . (== 1) =<< dpiDataBuffer_getAsBoolean djnValue
     -- null
     Just DPI_NATIVE_TYPE_NULL -> pure Aeson.Null
     -- Just DPI_NATIVE_TYPE_TIMESTAMP -> putStrLn "got timestamp"
-    -- Just DPI_NATIVE_TYPE_DOUBLE -> putStrLn "got double"
 
     Just dpiNativeType -> error $ "Unimplemented type: " <> show dpiNativeType
     _ -> error $ "oops! got: " <> show djnNativeTypeNumber

@@ -9,8 +9,6 @@
 
 module Database.Oracle.Simple.FromField where
 
-import qualified Data.Aeson as Aeson
-import qualified Data.List as L
 import Foreign
 import Control.Exception
 import Control.Monad
@@ -168,6 +166,3 @@ instance Exception FieldParseError where
       <> "'. Supported encodings: ASCII, UTF-8, UTF-16BE, UTF-16LE."
   displayException ByteDecodeError{..} =
     "Field Parse Error: Failed to decode bytes as " <> fpeEncoding <> ": " <> fpeErrorMsg
-
-newtype JsonWrapper = JsonWrapper { unwrap :: () }
-  deriving Show

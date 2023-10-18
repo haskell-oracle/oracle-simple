@@ -1,6 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE DeriveGeneric #-}
 module Main where
 
 import Foreign hiding (withPool, Pool)
@@ -33,7 +34,7 @@ instance ToJSON JsonField
 main :: IO ()
 main = withPool params $ \pool -> do
   withPoolConnection pool $ \conn -> do
-    res <- query_ @(Only JsonField) conn "select * from json_demo"
+    res <- query_ @(Only Aeson.Value) conn "select * from json_demo"
     mapM_ print res
   hspec $ spec pool
 
