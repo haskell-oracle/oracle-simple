@@ -29,7 +29,6 @@ import Foreign.C.Types
 import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
-import Database.Oracle.Simple.JSON
 
 -- | A type that may be parsed from a database field.
 class (HasDPINativeType a) => FromField a where
@@ -58,9 +57,6 @@ instance FromField Int64 where
 
 instance FromField Word64 where
   fromField = FieldParser getWord64
-
-instance FromField Aeson.Value where
-  fromField = FieldParser getJSON 
 
 instance FromField Bool where
   fromField = FieldParser getBool
@@ -122,9 +118,6 @@ getFloat = coerce <$> dpiData_getFloat
 getInt64 :: ReadDPIBuffer Int64
 getInt64 = dpiData_getInt64
 
-getJSON :: ReadDPIBuffer Aeson.Value 
-getJSON = parseNode <=< peek <=< getValue <=< dpiData_getJSON
-
 -- | Get a Word64 value from the data buffer.
 getWord64 :: ReadDPIBuffer Word64
 getWord64 = dpiData_getUint64
@@ -138,9 +131,8 @@ getBool ptr = (== 1) <$> dpiData_getBool ptr
 -- Throws 'FieldParseError' if any other encoding is encountered.
 getText :: ReadDPIBuffer Text
 getText = buildText <=< peek <=< dpiData_getBytes
-
-buildText :: DPIBytes -> IO Text
-buildText DPIBytes{..} = do
+ where
+  buildText DPIBytes{..} = do
     gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
     encoding <- peekCString dpiBytesEncoding
     decodeFn <- case encoding of

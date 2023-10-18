@@ -14,27 +14,28 @@ import Data.Time
 import Test.Hspec
 import Foreign.C
 import Data.Aeson as Aeson
+import GHC.Generics
 
 import Database.Oracle.Simple
 
-foreign import ccall "run_json_demo"
-  run_json_demo :: Ptr DPIConn -> Ptr CString -> IO CInt
+data JsonField =
+  JsonField
+  { name :: String
+  , age :: Int
+  , birthplace :: String
+  , favoriteFoods :: [String]
+  , likesTennis :: Bool
+  } deriving (Generic, Show)
 
-runJsonDemo :: Connection -> IO ()
-runJsonDemo (Connection fptr) = do
-  withForeignPtr fptr $ \conn -> do
-    alloca $ \sPtrPtr -> do
-      run_json_demo conn sPtrPtr
-      sPtr <- peek sPtrPtr
-      str <- peekCString sPtr
-      free sPtr
-      putStrLn str
-      pure ()
+instance FromJSON JsonField
+instance ToJSON JsonField
 
 main :: IO ()
-main = withPool params $ \pool -> withPoolConnection pool $ \conn -> do 
-  [res] <- query_ @(Only Aeson.Value) conn "select * from json_demo"
-  putStrLn $ show res
+main = withPool params $ \pool -> do
+  withPoolConnection pool $ \conn -> do
+    res <- query_ @(Only JsonField) conn "select * from json_demo"
+    mapM_ print res
+  hspec $ spec pool
 
 params :: ConnectionParams
 params = ConnectionParams "username" "password" "localhost/devdb"
