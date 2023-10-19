@@ -1,10 +1,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE DeriveGeneric #-}
 module Main where
 
-import Foreign hiding (withPool, Pool)
 import Foreign.C.Types
 import Data.Fixed
 import Control.Monad.IO.Class (liftIO)
@@ -13,30 +10,11 @@ import Test.QuickCheck
 import Test.QuickCheck.Instances ()
 import Data.Time
 import Test.Hspec
-import Foreign.C
-import Data.Aeson as Aeson
-import GHC.Generics
 
 import Database.Oracle.Simple
 
-data JsonField =
-  JsonField
-  { name :: String
-  , age :: Int
-  , birthplace :: String
-  , favoriteFoods :: [String]
-  , likesTennis :: Bool
-  } deriving (Generic, Show)
-
-instance FromJSON JsonField
-instance ToJSON JsonField
-
 main :: IO ()
-main = withPool params $ \pool -> do
-  withPoolConnection pool $ \conn -> do
-    res <- query_ @(Only Aeson.Value) conn "select * from json_demo"
-    mapM_ print res
-  hspec $ spec pool
+main = withPool params $ hspec . spec
 
 params :: ConnectionParams
 params = ConnectionParams "username" "password" "localhost/devdb"

@@ -7,7 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Database.Oracle.Simple.JSON where
+module Database.Oracle.Simple.JSON (JsonDecodeError (..)) where
 
 import Control.Exception (Exception (displayException), SomeException, catch, evaluate, throwIO)
 import Control.Monad ((<=<))
@@ -49,19 +49,20 @@ instance Aeson.FromJSON a => HasDPINativeType a where
 instance {-# OVERLAPPABLE #-} Aeson.FromJSON a => FromField a where
   fromField = FieldParser getJson
 
+-- ODPI does not support casting from DPI_ORACLE_TYPE_JSON to DPI_NATIVE_TYPE_BYTES,
+-- which means we need to build an aeson Value from the top-level DPIJsonNode.
 getJson :: Aeson.FromJSON a => ReadDPIBuffer a
 getJson = parseJson <=< peek <=< dpiJson_getValue <=< dpiData_getJson
  where
   parseJson topNode = do
     aesonValue <- buildValue topNode
     case Aeson.fromJSON aesonValue of
-      Aeson.Error msg -> error msg
+      Aeson.Error msg -> throwIO $ ParseError msg
       Aeson.Success a -> pure a
 
-  -- ODPI does not support casting from DPI_ORACLE_TYPE_JSON to DPI_NATIVE_TYPE_BYTES,
-  -- which means we need to build an aeson Value from the top-level DPIJsonNode
+  -- Build Aeson values for various cases:
 
-  -- object
+  -- Object
   buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_JSON_OBJECT nodeValue) = do
     DPIJsonObject{..} <- peek =<< dpiDataBuffer_getAsJsonObject nodeValue
     fieldNamePtrs <- peekArray (fromIntegral djoNumFields) djoFieldNames
@@ -70,40 +71,41 @@ getJson = parseJson <=< peek <=< dpiJson_getValue <=< dpiData_getJson
     values <- mapM buildValue =<< peekArray (fromIntegral djoNumFields) djoFields
     pure $ Aeson.Object $ KeyMap.fromList (L.zip keys values)
 
-  -- array
+  -- Array
   buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_JSON_ARRAY nodeValue) = do
     DPIJsonArray{..} <- peek =<< dpiDataBuffer_getAsJsonArray nodeValue
     values <- mapM buildValue =<< peekArray (fromIntegral djaNumElements) djaElements
     pure $ Aeson.Array $ Vector.fromList values
 
-  -- number returned as DPIBytes
+  -- Number returned as DPIBytes
   buildValue (DPIJsonNode 2010 DPI_NATIVE_TYPE_BYTES nodeValue) = do
     DPIBytes{..} <- peek =<< dpiDataBuffer_getAsBytes nodeValue
     bytes <- packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
     let numStr = C8.unpack bytes
-    number <- evaluate (read numStr) `catch` (\(_ :: SomeException) -> throwIO $ NumberParseError numStr)
+    number <- evaluate (read numStr) `catch` (\(_ :: SomeException) -> throwIO $ InvalidNumber numStr)
     pure $ Aeson.Number number
 
-  -- string
+  -- String
   buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_BYTES nodeValue) = do
     DPIBytes{..} <- peek =<< dpiDataBuffer_getAsBytes nodeValue
     bytes <- packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
     pure $ Aeson.String (decodeUtf8 bytes)
 
-  -- number encoded as Double (will not fire as dpiJsonOptions_numberAsString is set)
+  -- Number encoded as Double (will not fire as dpiJsonOptions_numberAsString is set)
   buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_DOUBLE nodeValue) = do
     doubleVal <- dpiDataBuffer_getAsDouble nodeValue
     pure $ Aeson.Number $ fromFloatDigits doubleVal
 
-  -- boolean
+  -- Boolean literals (true, false)
   buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_BOOLEAN nodeValue) = do
     intVal <- dpiDataBuffer_getAsBoolean nodeValue
     pure $ Aeson.Bool (intVal == 1)
 
-  -- null
+  -- Null literal (null)
   buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_NULL _) = pure Aeson.Null
-  -- all other DPI native types
-  buildValue _ = error "oops!"
+
+  -- All other DPI native types
+  buildValue (DPIJsonNode _ nativeType _) = throwIO $ UnsupportedDPINativeType nativeType
 
 newtype DPIJson = DPIJson (Ptr DPIJson)
   deriving (Show, Eq)
@@ -163,8 +165,12 @@ foreign import ccall "dpiDataBuffer_getAsBoolean"
 foreign import ccall "dpiDataBuffer_getAsDouble"
   dpiDataBuffer_getAsDouble :: Ptr ReadBuffer -> IO CDouble
 
-data JsonDecodeError = NumberParseError String
+data JsonDecodeError = InvalidNumber String | ParseError String | UnsupportedDPINativeType DPINativeType
   deriving (Show)
 
 instance Exception JsonDecodeError where
-  displayException (NumberParseError numStr) = "Invalid number value '" <> numStr <> "'"
+  displayException (ParseError msg) = "Failed to parse JSON: " <> msg
+  displayException (InvalidNumber numStr) =
+    "While parsing JSON node, encountered invalid numeric value '" <> numStr <> "'"
+  displayException (UnsupportedDPINativeType nativeType) =
+    "While parsing JSON node, encountered unsupported DPI native type " <> show nativeType
