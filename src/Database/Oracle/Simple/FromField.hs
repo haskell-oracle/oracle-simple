@@ -9,7 +9,6 @@
 
 module Database.Oracle.Simple.FromField where
 
-import Foreign
 import Control.Exception
 import Control.Monad
 import qualified Data.ByteString as BS
