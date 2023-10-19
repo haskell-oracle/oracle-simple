@@ -4,10 +4,12 @@
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Database.Oracle.Simple.JSON () where
+module Database.Oracle.Simple.JSON where
 
+import Control.Exception (Exception (displayException), SomeException, catch, evaluate, throwIO)
 import Control.Monad ((<=<))
 import qualified Data.Aeson as Aeson
 import Data.Aeson.KeyMap as KeyMap
@@ -39,8 +41,6 @@ import Database.Oracle.Simple.Internal
     )
   , HasDPINativeType (dpiNativeType)
   , ReadBuffer
-  , dpiData_getDouble
-  , uintToDPINativeType
   )
 
 instance Aeson.FromJSON a => HasDPINativeType a where
@@ -50,11 +50,60 @@ instance {-# OVERLAPPABLE #-} Aeson.FromJSON a => FromField a where
   fromField = FieldParser getJson
 
 getJson :: Aeson.FromJSON a => ReadDPIBuffer a
-getJson = fromValue <=< buildValue <=< peek <=< dpiJson_getValue <=< dpiData_getJson
+getJson = parseJson <=< peek <=< dpiJson_getValue <=< dpiData_getJson
  where
-  fromValue value = case Aeson.fromJSON value of
-    Aeson.Error msg -> error msg
-    Aeson.Success a -> pure a
+  parseJson topNode = do
+    aesonValue <- buildValue topNode
+    case Aeson.fromJSON aesonValue of
+      Aeson.Error msg -> error msg
+      Aeson.Success a -> pure a
+
+  -- ODPI does not support casting from DPI_ORACLE_TYPE_JSON to DPI_NATIVE_TYPE_BYTES,
+  -- which means we need to build an aeson Value from the top-level DPIJsonNode
+
+  -- object
+  buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_JSON_OBJECT nodeValue) = do
+    DPIJsonObject{..} <- peek =<< dpiDataBuffer_getAsJsonObject nodeValue
+    fieldNamePtrs <- peekArray (fromIntegral djoNumFields) djoFieldNames
+    fieldNameLengths <- fmap fromIntegral <$> peekArray (fromIntegral djoNumFields) djoFieldNameLengths
+    keys <- mapM (fmap fromString . peekCStringLen) (L.zip fieldNamePtrs fieldNameLengths)
+    values <- mapM buildValue =<< peekArray (fromIntegral djoNumFields) djoFields
+    pure $ Aeson.Object $ KeyMap.fromList (L.zip keys values)
+
+  -- array
+  buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_JSON_ARRAY nodeValue) = do
+    DPIJsonArray{..} <- peek =<< dpiDataBuffer_getAsJsonArray nodeValue
+    values <- mapM buildValue =<< peekArray (fromIntegral djaNumElements) djaElements
+    pure $ Aeson.Array $ Vector.fromList values
+
+  -- number returned as DPIBytes
+  buildValue (DPIJsonNode 2010 DPI_NATIVE_TYPE_BYTES nodeValue) = do
+    DPIBytes{..} <- peek =<< dpiDataBuffer_getAsBytes nodeValue
+    bytes <- packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+    let numStr = C8.unpack bytes
+    number <- evaluate (read numStr) `catch` (\(_ :: SomeException) -> throwIO $ NumberParseError numStr)
+    pure $ Aeson.Number number
+
+  -- string
+  buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_BYTES nodeValue) = do
+    DPIBytes{..} <- peek =<< dpiDataBuffer_getAsBytes nodeValue
+    bytes <- packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+    pure $ Aeson.String (decodeUtf8 bytes)
+
+  -- number encoded as Double (will not fire as dpiJsonOptions_numberAsString is set)
+  buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_DOUBLE nodeValue) = do
+    doubleVal <- dpiDataBuffer_getAsDouble nodeValue
+    pure $ Aeson.Number $ fromFloatDigits doubleVal
+
+  -- boolean
+  buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_BOOLEAN nodeValue) = do
+    intVal <- dpiDataBuffer_getAsBoolean nodeValue
+    pure $ Aeson.Bool (intVal == 1)
+
+  -- null
+  buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_NULL _) = pure Aeson.Null
+  -- all other DPI native types
+  buildValue _ = error "oops!"
 
 newtype DPIJson = DPIJson (Ptr DPIJson)
   deriving (Show, Eq)
@@ -62,7 +111,7 @@ newtype DPIJson = DPIJson (Ptr DPIJson)
 
 data DPIJsonNode = DPIJsonNode
   { djnOracleTypeNumber :: CUInt
-  , djnNativeTypeNumber :: CUInt
+  , djnNativeTypeNumber :: DPINativeType
   , djnValue :: Ptr ReadBuffer
   }
   deriving (Generic)
@@ -97,7 +146,7 @@ dpiJson_getValue dpiJson = alloca $ \ptr -> do
   dpiJson_getValue' dpiJson dpiJsonOptions_numberAsString ptr
   peek ptr
  where
-  dpiJsonOptions_numberAsString = 0x01
+  dpiJsonOptions_numberAsString = 0x01 -- return data from numeric fields as DPIBytes
 
 foreign import ccall "dpiDataBuffer_getAsJsonObject"
   dpiDataBuffer_getAsJsonObject :: Ptr ReadBuffer -> IO (Ptr DPIJsonObject)
@@ -114,45 +163,8 @@ foreign import ccall "dpiDataBuffer_getAsBoolean"
 foreign import ccall "dpiDataBuffer_getAsDouble"
   dpiDataBuffer_getAsDouble :: Ptr ReadBuffer -> IO CDouble
 
-buildValue :: DPIJsonNode -> IO Aeson.Value
-buildValue DPIJsonNode{..} = do
-  case uintToDPINativeType djnNativeTypeNumber of
-    -- object
-    Just DPI_NATIVE_TYPE_JSON_OBJECT -> do
-      DPIJsonObject{..} <- peek =<< dpiDataBuffer_getAsJsonObject djnValue
-      djoFieldNamesArray <- peekArray (fromIntegral djoNumFields) djoFieldNames
-      djoFieldNameLengthsArray <- (fmap fromIntegral) <$> peekArray (fromIntegral djoNumFields) djoFieldNameLengths
-      keys <- mapM (fmap fromString . peekCStringLen) (L.zip djoFieldNamesArray djoFieldNameLengthsArray)
-      values <- mapM buildValue =<< peekArray (fromIntegral djoNumFields) djoFields
-      pure $ Aeson.Object $ KeyMap.fromList (L.zip keys values)
+data JsonDecodeError = NumberParseError String
+  deriving (Show)
 
-    -- array
-    Just DPI_NATIVE_TYPE_JSON_ARRAY -> do
-      DPIJsonArray{..} <- peek =<< dpiDataBuffer_getAsJsonArray djnValue
-      values <- mapM buildValue =<< peekArray (fromIntegral djaNumElements) djaElements
-      pure $ Aeson.Array $ Vector.fromList values
-
-    -- string and number
-    Just DPI_NATIVE_TYPE_BYTES -> do
-      DPIBytes{..} <- peek =<< dpiDataBuffer_getAsBytes djnValue
-      bytes <- packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
-
-      case djnOracleTypeNumber of
-        -- for numbers encoded as strings
-        2010 -> pure $ Aeson.Number (read $ C8.unpack bytes)
-        -- for all strings
-        _ -> pure $ Aeson.String (decodeUtf8 bytes)
-
-    -- this case shouldn't fire as we're setting dpiJson_getValue to return numbers as bytes
-    Just DPI_NATIVE_TYPE_DOUBLE -> do
-      doubleVal <- dpiDataBuffer_getAsDouble djnValue
-      pure $ Aeson.Number $ fromFloatDigits doubleVal
-
-    -- true or false literals
-    Just DPI_NATIVE_TYPE_BOOLEAN -> pure . Aeson.Bool . (== 1) =<< dpiDataBuffer_getAsBoolean djnValue
-    -- null
-    Just DPI_NATIVE_TYPE_NULL -> pure Aeson.Null
-    -- Just DPI_NATIVE_TYPE_TIMESTAMP -> putStrLn "got timestamp"
-
-    Just dpiNativeType -> error $ "Unimplemented type: " <> show dpiNativeType
-    _ -> error $ "oops! got: " <> show djnNativeTypeNumber
+instance Exception JsonDecodeError where
+  displayException (NumberParseError numStr) = "Invalid number value '" <> numStr <> "'"
