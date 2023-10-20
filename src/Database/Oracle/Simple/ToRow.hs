@@ -110,3 +110,4 @@ writeField field = RowWriter $ \stmt -> do
           AsNull -> 1
           _ -> 0
     bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData{..})
+    freeWriteBuffer dataValue -- no longer needed as dpiStmt_bindValueByPos creates a memory-managed dpiVar

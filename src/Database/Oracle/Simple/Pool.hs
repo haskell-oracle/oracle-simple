@@ -16,7 +16,7 @@ import Foreign
   , peek
   , withForeignPtr
   )
-import Foreign.C (CInt (CInt), CString, CUInt (CUInt), newCStringLen)
+import Foreign.C (CInt (CInt), CString, CUInt (CUInt), withCStringLen)
 
 import Database.Oracle.Simple.Internal
   ( Connection (Connection)
@@ -44,22 +44,12 @@ createPool
 createPool params = do
   ctx <- readIORef globalContext
   DPIPool poolPtr <- alloca $ \connPtr -> do
-    (userCString, fromIntegral -> userLen) <- newCStringLen (user params)
-    (passCString, fromIntegral -> passLen) <- newCStringLen (pass params)
-    (connCString, fromIntegral -> connLen) <- newCStringLen (connString params)
-    throwOracleError
-      =<< dpiPool_create
-        ctx
-        userCString
-        userLen
-        passCString
-        passLen
-        connCString
-        connLen
-        nullPtr
-        nullPtr
-        connPtr
-    peek connPtr
+    withCStringLen (user params) $ \(userCString, fromIntegral -> userLen) ->
+      withCStringLen (pass params) $ \(passCString, fromIntegral -> passLen) ->
+        withCStringLen (connString params) $ \(connCString, fromIntegral -> connLen) -> do
+          throwOracleError
+            =<< dpiPool_create ctx userCString userLen passCString passLen connCString connLen nullPtr nullPtr connPtr
+          peek connPtr
   fptr <- newForeignPtr_ poolPtr
   addForeignPtrFinalizer dpiPool_release_finalizer fptr
   addForeignPtrFinalizer dpiPool_close_finalizer fptr
