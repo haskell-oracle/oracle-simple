@@ -81,22 +81,12 @@ connectDPI
 connectDPI params = do
   ctx <- readIORef globalContext
   alloca $ \connPtr -> do
-    (userCString, fromIntegral -> userLen) <- newCStringLen (user params)
-    (passCString, fromIntegral -> passLen) <- newCStringLen (pass params)
-    (connCString, fromIntegral -> connLen) <- newCStringLen (connString params)
-    throwOracleError
-      =<< dpiConn_create
-        ctx
-        userCString
-        userLen
-        passCString
-        passLen
-        connCString
-        connLen
-        nullPtr
-        nullPtr
-        connPtr
-    peek connPtr
+    withCStringLen (user params) $ \(userCString, fromIntegral -> userLen) ->
+      withCStringLen (pass params) $ \(passCString, fromIntegral -> passLen) ->
+        withCStringLen (connString params) $ \(connCString, fromIntegral -> connLen) -> do
+          throwOracleError
+            =<< dpiConn_create ctx userCString userLen passCString passLen connCString connLen nullPtr nullPtr connPtr
+          peek connPtr
 
 -- | The order that the finalizers are declared in is very important
 -- The close must be defined /last/ so it can run /first/
@@ -657,10 +647,10 @@ prepareStmt
 prepareStmt (Connection fptr) sql = do
   withForeignPtr fptr $ \conn -> do
     alloca $ \stmtPtr -> do
-      (sqlCStr, fromIntegral -> sqlCStrLen) <- newCStringLen sql
-      status <- dpiConn_prepareStmt conn 0 sqlCStr sqlCStrLen nullPtr 0 stmtPtr
-      throwOracleError status
-      peek stmtPtr
+      withCStringLen sql $ \(sqlCStr, fromIntegral -> sqlCStrLen) -> do
+        status <- dpiConn_prepareStmt conn 0 sqlCStr sqlCStrLen nullPtr 0 stmtPtr
+        throwOracleError status
+        peek stmtPtr
 
 data DPIModeExec
   = DPI_MODE_EXEC_DEFAULT -- 0x00000000
@@ -903,6 +893,13 @@ instance Storable WriteBuffer where
   poke ptr (AsBytes dpiBytesVal) = poke (castPtr ptr) dpiBytesVal
   poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
   poke ptr AsNull = poke (castPtr ptr) nullPtr
+
+-- | Free all pointers in the WriteBuffer.
+-- Call only after the contents of the buffer (specifically, any pointers) are no longer needed.
+freeWriteBuffer :: WriteBuffer -> IO ()
+freeWriteBuffer (AsString cString) = free cString
+freeWriteBuffer (AsBytes DPIBytes{..}) = free dpiBytesPtr >> free dpiBytesEncoding
+freeWriteBuffer _ = pure ()
 
 foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr (DPIData ReadBuffer) -> IO Double
