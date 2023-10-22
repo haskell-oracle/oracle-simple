@@ -808,11 +808,11 @@ instance Storable DPINativeType where
   sizeOf _ = sizeOf (undefined :: CUInt)
   alignment _ = alignment (undefined :: CUInt)
   peek ptr = do
-    intVal <- peek (castPtr @_ @CUInt ptr)
+    intVal <- peek (castPtr ptr)
     case uintToDPINativeType intVal of
       Nothing -> fail "DPINativeType.peek: Invalid value"
       Just val -> pure val
-  poke ptr val = poke (castPtr @_ @CUInt ptr) (dpiNativeTypeToUInt val)
+  poke ptr val = poke (castPtr ptr) (dpiNativeTypeToUInt val)
 
 dpiNativeTypeToUInt :: DPINativeType -> CUInt
 dpiNativeTypeToUInt DPI_NATIVE_TYPE_INT64 = 3000

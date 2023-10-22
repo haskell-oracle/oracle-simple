@@ -29,7 +29,7 @@ executable tests
   main-is:
     Main.hs
   build-depends:
-    base < 5, oracle-simple, text, time, hspec, QuickCheck, quickcheck-instances, aeson
+    base < 5, oracle-simple, text, time, hspec, QuickCheck, quickcheck-instances
   hs-source-dirs:
     test
   default-language:
@@ -73,8 +73,8 @@ library
     extra-lib-dirs:
       /usr/local/lib
   c-sources:
-    cbits/oracle-helpers.c
-    cbits/json.c
+    cbits/dpiDataBuffer.c
+    cbits/oracleHelpers.c
   default-language:
     Haskell2010
 
