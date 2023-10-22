@@ -109,5 +109,5 @@ writeField field = RowWriter $ \stmt -> do
     let dataIsNull = case dataValue of
           AsNull -> 1
           _ -> 0
-    bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData{..})
+    bindValueByPos stmt col (writeAs (Proxy @a)) (DPIData{..})
     freeWriteBuffer dataValue -- no longer needed as dpiStmt_bindValueByPos creates a memory-managed dpiVar

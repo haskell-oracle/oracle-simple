@@ -1,7 +1,11 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DeriveAnyClass #-}
 module Main where
 
+import Data.Aeson
 import Foreign.C.Types
 import Data.Fixed
 import Control.Monad.IO.Class (liftIO)
@@ -10,8 +14,28 @@ import Test.QuickCheck
 import Test.QuickCheck.Instances ()
 import Data.Time
 import Test.Hspec
+import GHC.Generics
+import Data.Aeson
 
 import Database.Oracle.Simple
+
+data SumType = This | That
+  deriving (Generic, Eq, Show)
+
+instance ToJSON SumType
+instance FromJSON SumType
+
+data JsonData =
+  JsonData
+  { string :: String
+  , number :: Int
+  , bool :: Bool
+  , maybeBool :: Maybe Bool 
+  , stringList :: [String]
+  , sumType :: SumType
+  , double :: Double
+  } deriving (Generic, Eq, Show)
+    deriving anyclass (FromJSON, ToJSON) 
 
 main :: IO ()
 main = withPool params $ hspec . spec
@@ -76,3 +100,12 @@ spec pool = do
         property $ \tod day (nanos :: Nano) -> do
           let utc = UTCTime day $ timeOfDayToTime tod { todSec = realToFrac nanos }
           utc `shouldBe` dpiTimeStampToUTCTime (utcTimeToDPITimestamp utc)
+
+    describe "JSON tests" $ do
+      it "should roundtrip JSON data" $ \conn -> do
+        _ <- execute_ conn "create table json_test(test_column json)"
+        let jsonData = JsonData "str" 123 True Nothing ["hello", "world"] That 3.14
+        _ <- execute conn "insert into json_test values (:1)" (Only jsonData)
+        [Only gotData] <- query_ conn "select * from json_test"
+        _ <- execute_ conn "drop table json_test"
+        gotData `shouldBe` jsonData

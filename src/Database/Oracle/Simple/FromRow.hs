@@ -16,6 +16,7 @@
 
 module Database.Oracle.Simple.FromRow where
 
+import Data.Data
 import Control.Exception hiding (TypeError)
 import Control.Monad
 import Control.Monad.State.Strict
@@ -125,7 +126,7 @@ fieldWith FieldParser{..} = RowParser $ \dpiStmt -> do
   pos <- modify (+ 1) >> get
   liftIO $ do
     (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral pos)
-    let typ = dpiNativeType (Proxy @a)
+    let typ = readAs (Proxy @a)
     unless (gotType == typ) $
       throwIO $
         TypeMismatch typ gotType (Column pos)

@@ -28,7 +28,7 @@ import Foreign.Storable.Generic
 import GHC.Generics
 
 -- | A type that may be parsed from a database field.
-class (HasDPINativeType a) => FromField a where
+class (ReadDPINativeType a) => FromField a where
   fromField :: FieldParser a
 
 instance Functor FieldParser where

@@ -2,6 +2,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE TypeSynonymInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Database.Oracle.Simple.ToField where
 
@@ -10,8 +11,10 @@ import Data.Time
 import Data.Int
 import Data.Text
 import Database.Oracle.Simple.Internal
+import qualified Data.Aeson as Aeson
+import Data.Proxy
 
-class (HasDPINativeType a) => ToField a where
+class (WriteDPINativeType a) => ToField a where
   toField :: a -> IO WriteBuffer
 
 instance ToField Double where
