@@ -582,18 +582,6 @@ instance Arbitrary DPITimestamp where
         else choose (0, 59)
     pure DPITimestamp{..}
 
-instance ReadDPINativeType DPITimestamp where
-  readAs Proxy = DPI_NATIVE_TYPE_TIMESTAMP
-
-instance ReadDPINativeType UTCTime where
-  readAs Proxy = DPI_NATIVE_TYPE_TIMESTAMP
-
-instance WriteDPINativeType DPITimestamp where
-  writeAs Proxy = DPI_NATIVE_TYPE_TIMESTAMP
-
-instance WriteDPINativeType UTCTime where
-  writeAs Proxy = DPI_NATIVE_TYPE_TIMESTAMP
-
 -- struct dpiAppContext {
 --     const char *namespaceName;
 --     uint32_t namespaceNameLength;
@@ -747,68 +735,6 @@ getQueryValue stmt pos = do
         Just typ -> do
           dataBuffer <- peek buffer
           pure (typ, dataBuffer)
-
-class WriteDPINativeType a where
-  writeAs :: Proxy a -> DPINativeType
-  -- ^ DPI native type for the Haskell type
-
-instance WriteDPINativeType Double where
-  writeAs Proxy = DPI_NATIVE_TYPE_DOUBLE
-
-instance WriteDPINativeType Float where
-  writeAs Proxy = DPI_NATIVE_TYPE_FLOAT
-
-instance WriteDPINativeType Text where
-  writeAs Proxy = DPI_NATIVE_TYPE_BYTES
-
-instance WriteDPINativeType String where
-  writeAs Proxy = DPI_NATIVE_TYPE_BYTES
-
-instance WriteDPINativeType Int64 where
-  writeAs Proxy = DPI_NATIVE_TYPE_INT64
-
-instance WriteDPINativeType Word64 where
-  writeAs Proxy = DPI_NATIVE_TYPE_UINT64
-
-instance WriteDPINativeType Bool where
-  writeAs Proxy = DPI_NATIVE_TYPE_BOOLEAN
-
-instance (WriteDPINativeType a) => WriteDPINativeType (Maybe a) where
-  writeAs Proxy = writeAs (Proxy @a)
-
-instance WriteDPINativeType Int where
-  writeAs Proxy = writeAs (Proxy @Int64)
-
--- | Class of all Haskell types that have an equivalent DPI native type.
-class ReadDPINativeType a where
-  readAs :: Proxy a -> DPINativeType
-
-instance ReadDPINativeType Double where
-  readAs Proxy = DPI_NATIVE_TYPE_DOUBLE
-
-instance ReadDPINativeType Float where
-  readAs Proxy = DPI_NATIVE_TYPE_FLOAT
-
-instance ReadDPINativeType Text where
-  readAs Proxy = DPI_NATIVE_TYPE_BYTES
-
-instance ReadDPINativeType String where
-  readAs Proxy = DPI_NATIVE_TYPE_BYTES
-
-instance ReadDPINativeType Int64 where
-  readAs Proxy = DPI_NATIVE_TYPE_INT64
-
-instance ReadDPINativeType Word64 where
-  readAs Proxy = DPI_NATIVE_TYPE_UINT64
-
-instance ReadDPINativeType Bool where
-  readAs Proxy = DPI_NATIVE_TYPE_BOOLEAN
-
-instance (ReadDPINativeType a) => ReadDPINativeType (Maybe a) where
-  readAs Proxy = readAs (Proxy @a)
-
-instance ReadDPINativeType Int where
-  readAs Proxy = readAs (Proxy @Int64)
 
 data DPINativeType
   = DPI_NATIVE_TYPE_INT64

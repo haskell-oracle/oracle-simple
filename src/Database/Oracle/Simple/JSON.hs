@@ -9,13 +9,13 @@
 
 module Database.Oracle.Simple.JSON (JsonDecodeError (..)) where
 
-import Data.ByteString.Lazy (toStrict)
 import Control.Exception (Exception (displayException), SomeException, catch, evaluate, throwIO)
 import Control.Monad ((<=<))
 import qualified Data.Aeson as Aeson
 import Data.Aeson.KeyMap as KeyMap
 import Data.ByteString (packCStringLen)
 import qualified Data.ByteString.Char8 as C8
+import Data.ByteString.Lazy (toStrict)
 import Data.List as L
 import Data.Proxy (Proxy (Proxy))
 import Data.Scientific (fromFloatDigits)
@@ -27,8 +27,7 @@ import Foreign.C (CDouble (CDouble), CInt (CInt), CString, CUInt (CUInt), peekCS
 import Foreign.Storable.Generic (GStorable)
 import GHC.Generics (Generic)
 
-import Database.Oracle.Simple.ToField (ToField(toField))
-import Database.Oracle.Simple.FromField (FieldParser (FieldParser), FromField (fromField), ReadDPIBuffer)
+import Database.Oracle.Simple.FromField (FieldParser (FieldParser), FromField (fromDPINativeType, fromField), ReadDPIBuffer)
 import Database.Oracle.Simple.Internal
   ( DPIBytes (DPIBytes, dpiBytesLength, dpiBytesPtr)
   , DPIData
@@ -42,28 +41,26 @@ import Database.Oracle.Simple.Internal
     , DPI_NATIVE_TYPE_NULL
     )
   , DPIOracleType (DPI_ORACLE_TYPE_NUMBER)
-  , ReadDPINativeType (readAs), WriteDPINativeType (writeAs)
-  , ReadBuffer, WriteBuffer(AsBytes), mkDPIBytesUTF8
+  , ReadBuffer
+  , WriteBuffer (AsBytes)
+  , mkDPIBytesUTF8
   )
+import Database.Oracle.Simple.ToField (ToField (toDPINativeType, toField))
 
-instance Aeson.ToJSON a => WriteDPINativeType a where
-  writeAs Proxy = DPI_NATIVE_TYPE_BYTES
-
-instance {-# OVERLAPPABLE #-} Aeson.ToJSON a => ToField a where
+instance {-# OVERLAPPABLE #-} (Aeson.ToJSON a) => ToField a where
+  toDPINativeType _ = DPI_NATIVE_TYPE_BYTES
 
   -- Oracle allows JSON data to be inserted using the character API.
   toField = fmap AsBytes . mkDPIBytesUTF8 . C8.unpack . toStrict . Aeson.encode
 
-instance Aeson.FromJSON a => ReadDPINativeType a where
-  readAs Proxy = DPI_NATIVE_TYPE_JSON
+instance {-# OVERLAPPABLE #-} (Aeson.FromJSON a) => FromField a where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_JSON
 
-instance {-# OVERLAPPABLE #-} Aeson.FromJSON a => FromField a where
-  
   -- ODPI does not support casting from DPI_ORACLE_TYPE_JSON to DPI_NATIVE_TYPE_BYTES.
   -- This means we need to build an aeson Value from the top-level DPIJsonNode.
   fromField = FieldParser getJson
 
-getJson :: Aeson.FromJSON a => ReadDPIBuffer a
+getJson :: (Aeson.FromJSON a) => ReadDPIBuffer a
 getJson = parseJson <=< peek <=< dpiJson_getValue <=< dpiData_getJson
  where
   parseJson topNode = do
