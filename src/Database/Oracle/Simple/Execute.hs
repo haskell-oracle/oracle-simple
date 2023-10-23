@@ -8,7 +8,7 @@ import Data.Word (Word64)
 import Database.Oracle.Simple.Internal
   ( Column (Column)
   , Connection
-  , DPIModeExec (DPI_MODE_EXEC_COMMIT_ON_SUCCESS)
+  , DPIModeExec (DPI_MODE_EXEC_DEFAULT)
   , dpiExecute
   , getRowCount
   , prepareStmt
@@ -21,7 +21,7 @@ execute :: (ToRow a) => Connection -> String -> a -> IO Word64
 execute conn sql param = do
   stmt <- prepareStmt conn sql
   _ <- evalStateT (runRowWriter (toRow param) stmt) (Column 0)
-  dpiExecute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+  dpiExecute stmt DPI_MODE_EXEC_DEFAULT
   rowsAffected <- getRowCount stmt
   pure rowsAffected
 
@@ -29,7 +29,7 @@ execute conn sql param = do
 execute_ :: Connection -> String -> IO Word64
 execute_ conn sql = do
   stmt <- prepareStmt conn sql
-  dpiExecute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+  dpiExecute stmt DPI_MODE_EXEC_DEFAULT
   rowsAffected <- getRowCount stmt
   pure rowsAffected
 
@@ -44,6 +44,6 @@ executeMany conn sql params = do
  where
   go stmt !totalRowsAffected param = do
     _ <- evalStateT (runRowWriter (toRow param) stmt) (Column 0)
-    dpiExecute stmt DPI_MODE_EXEC_COMMIT_ON_SUCCESS
+    dpiExecute stmt DPI_MODE_EXEC_DEFAULT
     rowsAffected <- getRowCount stmt
     pure (totalRowsAffected + rowsAffected)

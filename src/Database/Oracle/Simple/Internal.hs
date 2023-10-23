@@ -22,6 +22,8 @@
 
 module Database.Oracle.Simple.Internal where
 
+import Data.UUID.V4
+import Data.UUID
 import Control.Exception
 import Control.Monad
 import Control.Monad.State.Strict
@@ -385,7 +387,8 @@ toOracleError :: ErrorInfo -> IO OracleError
 toOracleError ErrorInfo{..} = do
   oracleErrorFnName <- peekCString errorInfoFnName
   oracleErrorAction <- peekCString errorInfoAction
-  oracleErrorMessage <- peekCStringLen (errorInfoMessage, fromIntegral errorInfoMessageLength)
+  oracleErrorMessage <-
+    peekCStringLen (errorInfoMessage, fromIntegral errorInfoMessageLength)
   oracleErrorSqlState <- peekCString errorInfoSqlState
   let oracleErrorCode = fromIntegral errorInfoCode
   let oracleErrorIsRecoverable = intToBool $ fromIntegral errorInfoIsRecoverable
@@ -928,12 +931,17 @@ foreign import ccall "dpiStmt_bindValueByPos"
     -> IO CInt
     -- ^ int
 
-bindValueByPos :: DPIStmt -> Column -> DPINativeType -> (DPIData WriteBuffer) -> IO ()
+bindValueByPos
+  :: DPIStmt -> Column -> DPINativeType -> (DPIData WriteBuffer) -> IO ()
 bindValueByPos stmt col nativeType val = do
   alloca $ \dpiData' -> do
     poke dpiData' val
     throwOracleError
-      =<< dpiStmt_bindValueByPos stmt (fromIntegral $ getColumn col) (dpiNativeTypeToUInt nativeType) dpiData'
+      =<< dpiStmt_bindValueByPos
+        stmt
+        (fromIntegral $ getColumn col)
+        (dpiNativeTypeToUInt nativeType)
+        dpiData'
     pure ()
 
 foreign import ccall "dpiStmt_getRowCount"
@@ -982,3 +990,93 @@ isHealthy (Connection fptr) =
 -- Structurally equivalent to 'Data.Functor.Identity.Identity'.
 newtype Only a = Only {fromOnly :: a}
   deriving stock (Eq, Ord, Read, Show, Generic)
+
+-- ** Transactions
+
+data DPIXid = DPIXid
+  { dpixFormatId :: CLong
+  , dpixGlobalTransactionId :: CString
+  , dpixGlobalTransactionIdLength :: CUInt
+  , dpixBranchQualifier :: CString
+  , dpixBranchQualifierLength :: CUInt
+  }
+  deriving (Generic, Show)
+  deriving anyclass (GStorable)
+
+data Transaction = Transaction 
+  { transactionId :: UUID
+  , branchQualifier :: UUID
+  }
+
+withDPIXid :: Transaction -> (Ptr DPIXid -> IO a) -> IO a
+withDPIXid Transaction{..} action =
+  withCStringLen (toString transactionId) $ \(dpixGlobalTransactionId, fromIntegral -> dpixGlobalTransactionIdLength) ->
+    withCStringLen (toString branchQualifier) $ \(dpixBranchQualifier, fromIntegral -> dpixBranchQualifierLength) ->
+      let dpixFormatId = 115
+          dpiXid = DPIXid {..}
+       in alloca $ \dpiPtr -> poke dpiPtr dpiXid >> action dpiPtr
+
+-- | Begin a new transaction.
+beginTransaction :: Connection -> IO Transaction
+beginTransaction (Connection fptr) =
+  withForeignPtr fptr $ \conn -> do
+    transactionId <- nextRandom
+    branchQualifier <- nextRandom
+    let dpiTransaction = Transaction {..}
+    withDPIXid dpiTransaction $ \dpiXid ->
+      throwOracleError =<< dpiConn_tpcBegin conn dpiXid 0 0x00000001
+    pure dpiTransaction
+
+foreign import ccall unsafe "dpiConn_tpcBegin"
+  dpiConn_tpcBegin
+    :: Ptr DPIConn
+    -> Ptr DPIXid
+    -> CUInt
+    -> CUInt
+    -> IO CInt
+
+-- | Prepare transaction for commit.
+-- Returns whether the transaction needs to be committed.
+prepareCommit :: Connection -> Transaction -> IO Bool
+prepareCommit (Connection fptr) dpiTransaction =
+  withForeignPtr fptr $ \conn ->
+    withDPIXid dpiTransaction $ \dpiXid ->
+      alloca $ \commitNeededPtr -> do
+        throwOracleError =<< dpiConn_tpcPrepare conn dpiXid commitNeededPtr
+        (== 1) <$> peek commitNeededPtr
+
+foreign import ccall unsafe "dpiConn_tpcPrepare"
+  dpiConn_tpcPrepare
+    :: Ptr DPIConn
+    -> Ptr DPIXid
+    -> Ptr CInt -- whether a commit is needed
+    -> IO CInt
+
+-- | Roll back a transaction.
+rollbackTransaction :: Connection -> Transaction -> IO ()
+rollbackTransaction (Connection fptr) dpiTransaction =
+  withForeignPtr fptr $ \conn ->
+    withDPIXid dpiTransaction $ \dpiXid ->
+      throwOracleError =<< dpiConn_tpcRollback conn dpiXid
+
+foreign import ccall unsafe "dpiConn_tpcRollback"
+  dpiConn_tpcRollback
+    :: Ptr DPIConn
+    -> Ptr DPIXid
+    -> IO CInt
+
+-- | Commit a transaction.
+-- Throws an exception if a commit was not necessary.
+-- Whether a commit is necessary can be checked by 'prepareCommit'.
+commitTransaction :: Connection -> Transaction -> IO ()
+commitTransaction (Connection fptr) dpiTransaction =
+  withForeignPtr fptr $ \conn ->
+    withDPIXid dpiTransaction $ \dpiXid ->
+      throwOracleError =<< dpiConn_tpcCommit conn dpiXid 0
+
+foreign import ccall unsafe "dpiConn_tpcCommit"
+  dpiConn_tpcCommit
+    :: Ptr DPIConn
+    -> Ptr DPIXid
+    -> CInt
+    -> IO CInt
