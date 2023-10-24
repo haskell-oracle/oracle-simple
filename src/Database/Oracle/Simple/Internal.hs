@@ -1013,8 +1013,35 @@ withDPIXid Transaction{..} action =
   withCStringLen (toString transactionId) $ \(dpixGlobalTransactionId, fromIntegral -> dpixGlobalTransactionIdLength) ->
     withCStringLen (toString branchQualifier) $ \(dpixBranchQualifier, fromIntegral -> dpixBranchQualifierLength) ->
       let dpixFormatId = 115
-          dpiXid = DPIXid {..}
-       in alloca $ \dpiPtr -> poke dpiPtr dpiXid >> action dpiPtr
+       in alloca $ \dpiPtr -> poke dpiPtr DPIXid {..} >> action dpiPtr
+
+-- | Execute an action in an SQL transaction.
+--
+-- If the action succeeds, the transaction will be completed with commit before this function returns.
+-- If the action throws any kind of exception, the transaction is rolled back and the exception will be rethrown.
+--
+-- Nesting these calls will result in rollbacks bubbling up to the top-level transaction.
+-- To properly nest transactions, use the low-level transaction functions ('beginTransaction', 'prepareCommit',
+-- 'commitTransaction', et cetera) instead:
+--
+-- @
+-- outerTx <- beginTransaction conn
+-- {- outer transaction stuff -}
+-- innerTx <- beginTransaction conn
+-- res <- try $ execute conn "stmt" params
+-- innerRowsAffected <- case res of
+--   Left (e :: OracleError) -> rollbackTransaction conn innerTx >> pure 0
+--   Right r -> commitIfNeeded conn innerTx >> pure r
+-- {- more outer transaction stuff -}
+-- @
+withTransaction :: Connection -> IO a -> IO a
+withTransaction conn action = do
+  txHandle <- beginTransaction conn
+  result <- action `catch` (\(e :: OracleError) -> rollbackTransaction conn txHandle >> throw e)
+  commitNeeded <- prepareCommit conn txHandle
+  if commitNeeded
+    then commitTransaction conn txHandle >> pure result
+    else {- endTransaction conn txHandle #-} pure result 
 
 -- | Begin a new transaction.
 beginTransaction :: Connection -> IO Transaction
@@ -1080,3 +1107,36 @@ foreign import ccall unsafe "dpiConn_tpcCommit"
     -> Ptr DPIXid
     -> CInt
     -> IO CInt
+
+data DPITPCEndFlag = DPI_TPC_END_NORMAL | DPI_TPC_END_SUSPEND
+  deriving (Eq, Show)
+
+dpiTpcEndFlagToCUInt :: DPITPCEndFlag -> CUInt
+dpiTpcEndFlagToCUInt DPI_TPC_END_NORMAL = 0
+dpiTpcEndFlagToCUInt DPI_TPC_END_SUSPEND = 0x00100000
+
+cuintToDPITPCEndFlag :: CUInt -> Maybe DPITPCEndFlag
+cuintToDPITPCEndFlag 0 = Just DPI_TPC_END_NORMAL
+cuintToDPITPCEndFlag 0x00100000 = Just DPI_TPC_END_SUSPEND
+cuintToDPITPCEndFlag _ = Nothing
+
+-- | End a transaction.
+endTransaction :: Connection -> Transaction -> IO () 
+endTransaction (Connection fptr) dpiTransaction =
+  withForeignPtr fptr $ \conn ->
+    withDPIXid dpiTransaction $ \dpiXid ->
+      throwOracleError =<< dpiConn_tpcEnd conn dpiXid (dpiTpcEndFlagToCUInt DPI_TPC_END_NORMAL)
+
+foreign import ccall unsafe "dpiConn_tpcEnd"
+  dpiConn_tpcEnd
+    :: Ptr DPIConn
+    -> Ptr DPIXid
+    -> CUInt
+    -> IO CInt
+
+-- | Commit a transaction, if needed.
+-- If the transaction does not need to be committed, ends it instead.
+prepareAndCommit :: Connection -> Transaction -> IO ()
+prepareAndCommit conn dpiTransaction = do
+  commitNeeded <- prepareCommit conn dpiTransaction
+  (if commitNeeded then commitTransaction else endTransaction) conn dpiTransaction

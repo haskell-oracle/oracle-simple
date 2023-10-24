@@ -10,8 +10,22 @@ import Test.QuickCheck
 import Test.QuickCheck.Instances ()
 import Data.Time
 import Test.Hspec
+import Control.Exception
 
 import Database.Oracle.Simple
+
+
+savepointDemo :: IO ()
+savepointDemo = withPool params $ \pool ->
+  withPoolConnection pool $ \conn -> do
+    outerTx <- beginTransaction conn
+    executeMany conn "insert into transaction_test values (:1, :2)" [(1 :: Int, "First"), (2, "Second")]
+    execute_ conn "savepoint savepoint_1"
+    res <- try $ execute conn "insert into transaction_test values (:1, :2)" (2 :: Int, "Third")
+    case res of
+      Left (e :: OracleError) -> execute_ conn "rollback to savepoint savepoint_1" >> execute_ conn "release savepoint savepoint_1" >> pure ()
+      Right r -> pure ()
+    prepareAndCommit conn outerTx
 
 main :: IO ()
 main = withPool params $ hspec . spec
