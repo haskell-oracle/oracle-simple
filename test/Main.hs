@@ -1,5 +1,6 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 module Main where
 
 import Foreign.C.Types
@@ -14,25 +15,12 @@ import Control.Exception
 
 import Database.Oracle.Simple
 
-
-savepointDemo :: IO ()
-savepointDemo = withPool params $ \pool ->
-  withPoolConnection pool $ \conn -> do
-    outerTx <- beginTransaction conn
-    executeMany conn "insert into transaction_test values (:1, :2)" [(1 :: Int, "First"), (2, "Second")]
-    execute_ conn "savepoint savepoint_1"
-    res <- try $ execute conn "insert into transaction_test values (:1, :2)" (2 :: Int, "Third")
-    case res of
-      Left (e :: OracleError) -> execute_ conn "rollback to savepoint savepoint_1" >> execute_ conn "release savepoint savepoint_1" >> pure ()
-      Right r -> pure ()
-    prepareAndCommit conn outerTx
-
 main :: IO ()
 main = withPool params $ hspec . spec
 
 params :: ConnectionParams
 params = ConnectionParams "username" "password" "localhost/devdb"
-
+ 
 spec :: Pool -> Spec
 spec pool = do
   around (withPoolConnection pool) $ do
@@ -90,3 +78,56 @@ spec pool = do
         property $ \tod day (nanos :: Nano) -> do
           let utc = UTCTime day $ timeOfDayToTime tod { todSec = realToFrac nanos }
           utc `shouldBe` dpiTimeStampToUTCTime (utcTimeToDPITimestamp utc)
+
+    describe "transaction tests" $ do
+      it "should commit transaction successfully" $ \conn -> do
+        execute_ conn "create table transaction_test(text_column number(10,0) primary key)"
+        withTransaction conn $ do
+          execute conn "insert into transaction_test values(:1)" (Only @Int 1)
+          execute conn "insert into transaction_test values(:1)" (Only @Int 2)
+          execute conn "insert into transaction_test values(:1)" (Only @Int 3)
+          execute conn "insert into transaction_test values(:1)" (Only @Int 4)
+        results <- query_ @(Only Int) conn "select * from transaction_test"
+        execute_ conn "drop table transaction_test"
+        results `shouldBe` [Only 1, Only 2, Only 3, Only 4]
+
+      it "should roll back transaction in case of failure" $ \conn -> do
+        execute_ conn "create table rollback_test(text_column number(10,0) primary key)"
+        handleOracleError $ withTransaction conn $ do
+          execute conn "insert into rollback_test values(:1)" (Only @Int 1)
+          execute conn "insert into rollback_test values(:1)" (Only @Int 2)
+          execute conn "insert into rollback_test values(:1)" (Only @Int 3)
+          execute conn "insert into rollback_test values(:1)" (Only @Int 3) -- should fail
+        results <- query_ @(Only Int) conn "select * from rollback_test"
+        execute_ conn "drop table rollback_test"
+        results `shouldBe` [] -- should roll back transaction
+
+      it "should roll back to savepoint" $ \conn -> do
+        execute_ conn "create table savepoint_test(text_column number(10,0) primary key)"
+        withTransaction conn $ do
+          execute conn "insert into savepoint_test values(:1)" (Only @Int 1)
+          execute conn "insert into savepoint_test values(:1)" (Only @Int 2)
+          handleOracleError $ withSavepoint conn $ do
+            execute conn "insert into savepoint_test values(:1)" (Only @Int 3)
+            execute conn "insert into savepoint_test values(:1)" (Only @Int 4)
+            execute conn "insert into savepoint_test values(:1)" (Only @Int 4) -- should fail
+        results <- query_ @(Only Int) conn "select * from savepoint_test"
+        execute_ conn "drop table savepoint_test"
+        results `shouldBe` [Only 1, Only 2] -- should roll back to before savepoint
+
+      it "allows for nesting savepoints" $ \conn -> do
+        execute_ conn "create table savepoint_nesting_test(text_column number(10,0) primary key)"
+        withTransaction conn $ do
+          execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 1)
+          execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 2)
+          handleOracleError $ withSavepoint conn $ do
+            execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 3)
+            execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 4)
+            handleOracleError $ withSavepoint conn $ do
+              execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 5)
+              execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 5) -- should fail
+        results <- query_ @(Only Int) conn "select * from savepoint_nesting_test"
+        execute_ conn "drop table savepoint_nesting_test"
+        results `shouldBe` [Only 1, Only 2, Only 3, Only 4] -- should roll back to outer savepoint
+ 
+ where handleOracleError action = try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())

@@ -47,8 +47,9 @@ library
     , Database.Oracle.Simple.Query
     , Database.Oracle.Simple.Execute
     , Database.Oracle.Simple.Pool
+    , Database.Oracle.Simple.Transaction
   build-depends:
-    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, uuid
+    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, uuid, random
   hs-source-dirs:
     src
   extra-libraries:
