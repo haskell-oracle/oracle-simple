@@ -982,3 +982,4 @@ isHealthy (Connection fptr) =
 -- Structurally equivalent to 'Data.Functor.Identity.Identity'.
 newtype Only a = Only {fromOnly :: a}
   deriving stock (Eq, Ord, Read, Show, Generic)
+  deriving newtype Enum

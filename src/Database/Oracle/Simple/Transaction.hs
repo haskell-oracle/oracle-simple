@@ -11,8 +11,7 @@ module Database.Oracle.Simple.Transaction
   , commitTransaction
   , prepareCommit
   , withTransaction
-  , endTransaction
-  , prepareAndCommit
+  , commitIfNeeded
   , withSavepoint
   ) where
 
@@ -37,67 +36,29 @@ import Database.Oracle.Simple.Internal
   , throwOracleError
   )
 
-data DPIXid = DPIXid
-  { dpixFormatId :: CLong
-  , dpixGlobalTransactionId :: CString
-  , dpixGlobalTransactionIdLength :: CUInt
-  , dpixBranchQualifier :: CString
-  , dpixBranchQualifierLength :: CUInt
-  }
-  deriving (Generic, Show)
-  deriving anyclass (GStorable)
-
-data Transaction = Transaction
-  { transactionId :: UUID
-  , branchQualifier :: UUID
-  }
-
-withDPIXid :: Transaction -> (Ptr DPIXid -> IO a) -> IO a
-withDPIXid Transaction{..} action =
-  withCStringLen (toString transactionId) $ \(dpixGlobalTransactionId, fromIntegral -> dpixGlobalTransactionIdLength) ->
-    withCStringLen (toString branchQualifier) $ \(dpixBranchQualifier, fromIntegral -> dpixBranchQualifierLength) ->
-      let dpixFormatId = 115
-       in alloca $ \dpiPtr -> poke dpiPtr DPIXid{..} >> action dpiPtr
+-- * Transactions
 
 -- | Execute an action in an SQL transaction.
 --
 -- If the action succeeds, the transaction will be completed with commit before this function returns.
 -- If the action throws any kind of exception, the transaction is rolled back and the exception will be rethrown.
 --
--- Nesting transactions results in undefined behavior. For nesting-like functionality, see 'withSavepoint'.
+-- Nesting transactions may result in undefined behavior. For /nesting-like/ functionality, use 'withSavepoint'.
 withTransaction :: Connection -> IO a -> IO a
 withTransaction conn action = do
   txHandle <- beginTransaction conn
   result <-
     action
       `catch` (\(e :: OracleError) -> rollbackTransaction conn txHandle >> throw e)
-  prepareAndCommit conn txHandle
+  commitIfNeeded conn txHandle
   pure result
 
-newtype Savepoint = Savepoint String
-  deriving newtype (Show)
+-- ** Low-level transaction interface
 
--- | Create a savepoint, and roll back to it if an error occurs. This should only be used within a transaction.
-withSavepoint :: Connection -> IO a -> IO a
-withSavepoint conn action = do
-  savepoint <- newSavepoint conn
-  result <-
-    action
-      `catch` (\(e :: OracleError) -> rollbackToSavepoint conn savepoint >> throw e)
-  pure result
-
--- | Create a new savepoint. This should only be used within a transaction.
-newSavepoint :: Connection -> IO Savepoint
-newSavepoint conn = do
-  name <- genSavepointName
-  _ <- execute_ conn ("savepoint " <> name)
-  pure $ Savepoint name
- where
-  genSavepointName = replicateM 8 (getStdRandom $ uniformR ('a', 'z'))
-
--- | Roll back to a savepoint.
-rollbackToSavepoint :: Connection -> Savepoint -> IO ()
-rollbackToSavepoint conn (Savepoint name) = void $ execute_ conn ("rollback to savepoint " <> name)
+data Transaction = Transaction
+  { transactionId :: UUID
+  , branchQualifier :: UUID
+  }
 
 -- | Begin a new transaction.
 beginTransaction :: Connection -> IO Transaction
@@ -118,8 +79,10 @@ foreign import ccall unsafe "dpiConn_tpcBegin"
     -> CUInt
     -> IO CInt
 
--- | Prepare transaction for commit.
--- Returns whether the transaction needs to be committed.
+-- | Prepare transaction for commit. Returns whether the transaction needs to be committed.
+-- Attempting a commit if this function returns False may cause an exception.
+--
+-- Use 'commitIfNeeded' to safely commit a transaction.
 prepareCommit :: Connection -> Transaction -> IO Bool
 prepareCommit (Connection fptr) dpiTransaction =
   withForeignPtr fptr $ \conn ->
@@ -132,20 +95,7 @@ foreign import ccall unsafe "dpiConn_tpcPrepare"
   dpiConn_tpcPrepare
     :: Ptr DPIConn
     -> Ptr DPIXid
-    -> Ptr CInt -- whether a commit is needed
-    -> IO CInt
-
--- | Roll back a transaction.
-rollbackTransaction :: Connection -> Transaction -> IO ()
-rollbackTransaction (Connection fptr) dpiTransaction =
-  withForeignPtr fptr $ \conn ->
-    withDPIXid dpiTransaction $ \dpiXid ->
-      throwOracleError =<< dpiConn_tpcRollback conn dpiXid
-
-foreign import ccall unsafe "dpiConn_tpcRollback"
-  dpiConn_tpcRollback
-    :: Ptr DPIConn
-    -> Ptr DPIXid
+    -> Ptr CInt
     -> IO CInt
 
 -- | Commit a transaction.
@@ -164,36 +114,69 @@ foreign import ccall unsafe "dpiConn_tpcCommit"
     -> CInt
     -> IO CInt
 
-data DPITPCEndFlag = DPI_TPC_END_NORMAL | DPI_TPC_END_SUSPEND
-  deriving (Eq, Show)
-
-dpiTpcEndFlagToCUInt :: DPITPCEndFlag -> CUInt
-dpiTpcEndFlagToCUInt DPI_TPC_END_NORMAL = 0
-dpiTpcEndFlagToCUInt DPI_TPC_END_SUSPEND = 0x00100000
-
-cuintToDPITPCEndFlag :: CUInt -> Maybe DPITPCEndFlag
-cuintToDPITPCEndFlag 0 = Just DPI_TPC_END_NORMAL
-cuintToDPITPCEndFlag 0x00100000 = Just DPI_TPC_END_SUSPEND
-cuintToDPITPCEndFlag _ = Nothing
-
--- | End a transaction. Does not commit the transaction.
-endTransaction :: Connection -> Transaction -> IO ()
-endTransaction (Connection fptr) dpiTransaction =
+-- | Roll back a transaction.
+rollbackTransaction :: Connection -> Transaction -> IO ()
+rollbackTransaction (Connection fptr) dpiTransaction =
   withForeignPtr fptr $ \conn ->
     withDPIXid dpiTransaction $ \dpiXid ->
-      throwOracleError
-        =<< dpiConn_tpcEnd conn dpiXid (dpiTpcEndFlagToCUInt DPI_TPC_END_NORMAL)
+      throwOracleError =<< dpiConn_tpcRollback conn dpiXid
 
-foreign import ccall unsafe "dpiConn_tpcEnd"
-  dpiConn_tpcEnd
+foreign import ccall unsafe "dpiConn_tpcRollback"
+  dpiConn_tpcRollback
     :: Ptr DPIConn
     -> Ptr DPIXid
-    -> CUInt
     -> IO CInt
 
 -- | Commit a transaction, if needed.
--- If the transaction does not need to be committed, ends it instead.
-prepareAndCommit :: Connection -> Transaction -> IO ()
-prepareAndCommit conn dpiTransaction = do
+commitIfNeeded :: Connection -> Transaction -> IO ()
+commitIfNeeded conn dpiTransaction = do
   commitNeeded <- prepareCommit conn dpiTransaction
   when commitNeeded $ commitTransaction conn dpiTransaction
+
+data DPIXid = DPIXid
+  { dpixFormatId :: CLong
+  , dpixGlobalTransactionId :: CString
+  , dpixGlobalTransactionIdLength :: CUInt
+  , dpixBranchQualifier :: CString
+  , dpixBranchQualifierLength :: CUInt
+  }
+  deriving (Generic, Show)
+  deriving anyclass (GStorable)
+
+withDPIXid :: Transaction -> (Ptr DPIXid -> IO a) -> IO a
+withDPIXid Transaction{..} action =
+  withCStringLen (toString transactionId) $ \(dpixGlobalTransactionId, fromIntegral -> dpixGlobalTransactionIdLength) ->
+    withCStringLen (toString branchQualifier) $ \(dpixBranchQualifier, fromIntegral -> dpixBranchQualifierLength) ->
+      let dpixFormatId = 115 -- chosen at our discretion, can be anything but 0
+       in alloca $ \dpiPtr -> poke dpiPtr DPIXid{..} >> action dpiPtr
+
+-- * Savepoints
+
+-- | Create a savepoint, and roll back to it if an error occurs. This should only be used within a transaction.
+--
+-- Savepoints may be nested.
+withSavepoint :: Connection -> IO a -> IO a
+withSavepoint conn action = do
+  savepoint <- newSavepoint conn
+  result <-
+    action
+      `catch` (\(e :: OracleError) -> rollbackToSavepoint conn savepoint >> throw e)
+  pure result
+
+-- ** Low-level savepoint interface
+
+newtype Savepoint = Savepoint String
+  deriving newtype (Show)
+
+-- | Create a new savepoint. This should only be used within a transaction.
+newSavepoint :: Connection -> IO Savepoint
+newSavepoint conn = do
+  name <- genSavepointName
+  _ <- execute_ conn ("savepoint " <> name)
+  pure $ Savepoint name
+ where
+  genSavepointName = replicateM 8 (getStdRandom $ uniformR ('a', 'z'))
+
+-- | Roll back to a savepoint.
+rollbackToSavepoint :: Connection -> Savepoint -> IO ()
+rollbackToSavepoint conn (Savepoint name) = void $ execute_ conn ("rollback to savepoint " <> name)
