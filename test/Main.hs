@@ -3,6 +3,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE TypeApplications #-}
 module Main where
 
 import Data.Aeson
@@ -16,6 +17,7 @@ import Data.Time
 import Test.Hspec
 import GHC.Generics
 import Data.Aeson
+import Control.Exception
 
 import Database.Oracle.Simple
 
@@ -109,3 +111,89 @@ spec pool = do
         [Only gotData] <- query_ conn "select * from json_test"
         _ <- execute_ conn "drop table json_test"
         gotData `shouldBe` jsonData
+
+    describe "transaction tests" $ do
+      it "should commit transaction successfully" $ \conn -> do
+        execute_ conn "create table transaction_test(text_column number(10,0) primary key)"
+        withTransaction conn $ do
+          execute conn "insert into transaction_test values(:1)" (Only @Int 1)
+          execute conn "insert into transaction_test values(:1)" (Only @Int 2)
+          execute conn "insert into transaction_test values(:1)" (Only @Int 3)
+          execute conn "insert into transaction_test values(:1)" (Only @Int 4)
+        results <- query_ @(Only Int) conn "select * from transaction_test"
+        execute_ conn "drop table transaction_test"
+        results `shouldBe` [Only 1, Only 2, Only 3, Only 4]
+
+      it "should roll back transaction in case of failure" $ \conn -> do
+        execute_ conn "create table rollback_test(text_column number(10,0) primary key)"
+        handleOracleError $ withTransaction conn $ do
+          execute conn "insert into rollback_test values(:1)" (Only @Int 1)
+          execute conn "insert into rollback_test values(:1)" (Only @Int 2)
+          execute conn "insert into rollback_test values(:1)" (Only @Int 3)
+          execute conn "insert into rollback_test values(:1)" (Only @Int 3) -- should fail
+        results <- query_ @(Only Int) conn "select * from rollback_test"
+        execute_ conn "drop table rollback_test"
+        results `shouldBe` [] -- should roll back transaction
+
+      it "should roll back to savepoint" $ \conn -> do
+        execute_ conn "create table savepoint_test(text_column number(10,0) primary key)"
+        withTransaction conn $ do
+          execute conn "insert into savepoint_test values(:1)" (Only @Int 1)
+          execute conn "insert into savepoint_test values(:1)" (Only @Int 2)
+          handleOracleError $ withSavepoint conn $ do
+            execute conn "insert into savepoint_test values(:1)" (Only @Int 3)
+            execute conn "insert into savepoint_test values(:1)" (Only @Int 4)
+            execute conn "insert into savepoint_test values(:1)" (Only @Int 4) -- should fail
+        results <- query_ @(Only Int) conn "select * from savepoint_test"
+        execute_ conn "drop table savepoint_test"
+        results `shouldBe` [Only 1, Only 2] -- should roll back to before savepoint
+
+      it "allows for nesting savepoints" $ \conn -> do
+        execute_ conn "create table savepoint_nesting_test(text_column number(10,0) primary key)"
+        withTransaction conn $ do
+          execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 1)
+          execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 2)
+          handleOracleError $ withSavepoint conn $ do
+            execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 3)
+            execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 4)
+            handleOracleError $ withSavepoint conn $ do
+              execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 5)
+              execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 5) -- should fail
+            execute conn "insert into savepoint_nesting_test values(:1)" (Only @Int 6)
+        results <- query_ @(Only Int) conn "select * from savepoint_nesting_test"
+        execute_ conn "drop table savepoint_nesting_test"
+        results `shouldBe` [Only 1, Only 2, Only 3, Only 4, Only 6] -- should roll back to inner savepoint
+ 
+      it "handles consecutive transactions" $ \conn -> do
+        execute_ conn "create table transactions_test(text_column number(10,0) primary key)"
+        -- transaction that inserts rows
+        withTransaction conn $ do
+          execute conn "insert into transactions_test values(:1)" (Only @Int 1)
+          execute conn "insert into transactions_test values(:1)" (Only @Int 2)
+          execute conn "insert into transactions_test values(:1)" (Only @Int 3)
+          execute conn "insert into transactions_test values(:1)" (Only @Int 4)
+        -- transaction that makes no changes that require commit
+        withTransaction conn $ do
+          _ <- query_ @(Only Int) conn "select * from transactions_test"
+          pure ()
+        -- transaction that inserts rows with savepoint
+        withTransaction conn $ do
+          execute conn "insert into transactions_test values(:1)" (Only @Int 5)
+          withSavepoint conn $ do
+            execute conn "insert into transactions_test values(:1)" (Only @Int 6)
+          execute conn "insert into transactions_test values(:1)" (Only @Int 7)
+        -- transaction that is rolled back
+        handleOracleError $ withTransaction conn $ do
+          execute conn "insert into transactions_test values(:1)" (Only @Int 6) -- should fail
+        -- transaction that inserts rows with savepoint that is rolled back to
+        withTransaction conn $ do
+          execute conn "insert into transactions_test values(:1)" (Only @Int 8)
+          handleOracleError $ withSavepoint conn $ do
+            execute conn "insert into transactions_test values(:1)" (Only @Int 9)
+            execute conn "insert into transactions_test values(:1)" (Only @Int 9) -- should fail
+          execute conn "insert into transactions_test values(:1)" (Only @Int 10)
+        results <- query_ @(Only Int) conn "select * from transactions_test"
+        execute_ conn "drop table transactions_test"
+        results `shouldBe` [Only 1 .. Only 8] <> [Only 10]
+
+ where handleOracleError action = try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())

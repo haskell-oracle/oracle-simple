@@ -48,8 +48,9 @@ library
     , Database.Oracle.Simple.Execute
     , Database.Oracle.Simple.Pool
     , Database.Oracle.Simple.JSON
+    , Database.Oracle.Simple.Transaction
   build-depends:
-    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, aeson, scientific, vector
+    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, aeson, scientific, vector, uuid, random
   hs-source-dirs:
     src
   extra-libraries:
