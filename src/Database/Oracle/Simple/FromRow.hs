@@ -16,7 +16,6 @@
 
 module Database.Oracle.Simple.FromRow where
 
-import Data.Data
 import Control.Exception hiding (TypeError)
 import Control.Monad
 import Control.Monad.State.Strict
