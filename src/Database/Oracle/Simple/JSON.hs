@@ -53,6 +53,7 @@ instance {-# OVERLAPPABLE #-} (Aeson.ToJSON a) => ToField a where
   -- Oracle allows JSON data to be inserted using the character API.
   toField = fmap AsBytes . mkDPIBytesUTF8 . C8.unpack . toStrict . Aeson.encode
 
+-- | For use with columns that have @JSON@ data type (since Oracle 21c)
 instance {-# OVERLAPPABLE #-} (Aeson.FromJSON a) => FromField a where
   fromDPINativeType _ = DPI_NATIVE_TYPE_JSON
 
