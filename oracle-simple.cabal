@@ -29,7 +29,7 @@ executable tests
   main-is:
     Main.hs
   build-depends:
-    base < 5, oracle-simple, text, time, hspec, QuickCheck, quickcheck-instances
+    base < 5, oracle-simple, text, time, hspec, QuickCheck, quickcheck-instances, aeson
   hs-source-dirs:
     test
   default-language:
@@ -47,9 +47,10 @@ library
     , Database.Oracle.Simple.Query
     , Database.Oracle.Simple.Execute
     , Database.Oracle.Simple.Pool
+    , Database.Oracle.Simple.JSON
     , Database.Oracle.Simple.Transaction
   build-depends:
-    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, uuid, random
+    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, aeson, scientific, vector, uuid, random
   hs-source-dirs:
     src
   extra-libraries:
@@ -73,7 +74,8 @@ library
     extra-lib-dirs:
       /usr/local/lib
   c-sources:
-    cbits/oracle-helpers.c
+    cbits/dpiDataBuffer.c
+    cbits/oracleHelpers.c
   default-language:
     Haskell2010
 

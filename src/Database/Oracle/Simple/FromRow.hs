@@ -125,7 +125,7 @@ fieldWith FieldParser{..} = RowParser $ \dpiStmt -> do
   pos <- modify (+ 1) >> get
   liftIO $ do
     (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral pos)
-    let typ = dpiNativeType (Proxy @a)
+    let typ = fromDPINativeType (Proxy @a)
     unless (gotType == typ) $
       throwIO $
         TypeMismatch typ gotType (Column pos)

@@ -1,19 +1,50 @@
+{-# LANGUAGE DeriveAnyClass #-}
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+
 module Main where
 
-import Foreign.C.Types
-import Data.Fixed
+import Control.Exception
 import Control.Monad.IO.Class (liftIO)
+import Data.Aeson
+import Data.Fixed
+import Data.Time
+import Foreign.C.Types
+import GHC.Generics
+import Test.Hspec
 import Test.Hspec.QuickCheck
 import Test.QuickCheck
 import Test.QuickCheck.Instances ()
-import Data.Time
-import Test.Hspec
-import Control.Exception
 
 import Database.Oracle.Simple
+
+data SumType = This | That
+  deriving (Generic, Eq, Show)
+
+instance ToJSON SumType
+instance FromJSON SumType
+
+data JsonData = JsonData
+  { string :: String
+  , number :: Int
+  , bool :: Bool
+  , maybeBool :: Maybe Bool
+  , stringList :: [String]
+  , sumType :: SumType
+  , double :: Double
+  }
+  deriving (Generic, Eq, Show)
+  deriving anyclass (FromJSON, ToJSON)
+
+data MixTable = MixTable
+  { intColumn :: Int
+  , jsonColumn :: JsonData
+  }
+  deriving (Generic, Eq, Show)
+  deriving anyclass (FromRow, ToRow)
 
 main :: IO ()
 main = withPool params $ hspec . spec
@@ -78,6 +109,26 @@ spec pool = do
         property $ \tod day (nanos :: Nano) -> do
           let utc = UTCTime day $ timeOfDayToTime tod { todSec = realToFrac nanos }
           utc `shouldBe` dpiTimeStampToUTCTime (utcTimeToDPITimestamp utc)
+
+    describe "JSON tests" $ do
+      it "should roundtrip JSON data" $ \conn -> do
+        _ <- execute_ conn "create table json_test(test_column json)"
+        let jsonData = JsonData "str" 123 True Nothing ["hello", "world"] That 3.14
+        _ <- execute conn "insert into json_test values (:1)" (Only jsonData)
+        [Only gotData] <- query_ conn "select * from json_test"
+        _ <- execute_ conn "drop table json_test"
+        gotData `shouldBe` jsonData
+
+      it "handles a mix of json and non-json fields in tables" $ \conn -> do
+        _ <- execute_ conn "create table json_mix_test(int_column number(10,0), json_column json)"
+        let insertRows =
+              [ MixTable 1 (JsonData "str" 123 True Nothing ["hello", "world"] That 3.14)
+              , MixTable 2 (JsonData "foo" 456 False (Just False) ["goodbye!"] This 9.99)
+              ]
+        _ <- executeMany conn "insert into json_mix_test values (:1, :2)" insertRows
+        gotRows <- query_ conn "select * from json_mix_test"
+        _ <- execute_ conn "drop table json_mix_test"
+        gotRows `shouldBe` insertRows
 
     describe "transaction tests" $ do
       it "should commit transaction successfully" $ \conn -> do

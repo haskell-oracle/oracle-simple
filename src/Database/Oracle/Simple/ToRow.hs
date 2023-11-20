@@ -97,10 +97,6 @@ instance (TypeError ('Text "Sum types not supported")) => GToRow (l :+: r) where
 instance (ToField a) => GToRow (K1 i a) where
   gToRow (K1 x) = void (writeField x)
 
-instance (ToField a) => ToField (Maybe a) where
-  toField (Just val) = toField val
-  toField Nothing = pure AsNull
-
 writeField :: forall a. (ToField a) => a -> RowWriter ()
 writeField field = RowWriter $ \stmt -> do
   col <- modify (+ 1) >> get
@@ -109,5 +105,5 @@ writeField field = RowWriter $ \stmt -> do
     let dataIsNull = case dataValue of
           AsNull -> 1
           _ -> 0
-    bindValueByPos stmt col (dpiNativeType (Proxy @a)) (DPIData{..})
+    bindValueByPos stmt col (toDPINativeType (Proxy @a)) (DPIData{..})
     freeWriteBuffer dataValue -- no longer needed as dpiStmt_bindValueByPos creates a memory-managed dpiVar

@@ -28,40 +28,53 @@ import Foreign.Storable.Generic
 import GHC.Generics
 
 -- | A type that may be parsed from a database field.
-class (HasDPINativeType a) => FromField a where
+class FromField a where
+  fromDPINativeType :: Proxy a -> DPINativeType
+  -- ^ The DPI native type for the value in the data buffer.
   fromField :: FieldParser a
+  -- ^ Retrieve a value of type @a@ from the data buffer.
 
 instance Functor FieldParser where
   fmap f FieldParser{..} = FieldParser (fmap f <$> readDPIDataBuffer)
 
 instance FromField Double where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_DOUBLE
   fromField = FieldParser getDouble
 
 instance FromField Float where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_FLOAT
   fromField = FieldParser getFloat
 
 instance FromField DPITimestamp where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_TIMESTAMP
   fromField = FieldParser getTimestamp
 
 instance FromField Text where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_BYTES
   fromField = FieldParser getText
 
 instance FromField String where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_BYTES
   fromField = FieldParser getString
 
 instance FromField Int64 where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_INT64
   fromField = FieldParser getInt64
 
 instance FromField Word64 where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_UINT64
   fromField = FieldParser getWord64
 
 instance FromField Bool where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_BOOLEAN
   fromField = FieldParser getBool
 
 instance FromField Int where
+  fromDPINativeType _ = fromDPINativeType (Proxy @Int64)
   fromField = fromIntegral <$> fromField @Int64
 
 instance (FromField a) => FromField (Maybe a) where
+  fromDPINativeType _ = fromDPINativeType (Proxy @a)
   fromField = FieldParser $ \ptr -> do
     result <- dpiData_getIsNull ptr
     if result == 1
@@ -69,6 +82,7 @@ instance (FromField a) => FromField (Maybe a) where
       else Just <$> readDPIDataBuffer (fromField @a) ptr
 
 instance FromField UTCTime where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_TIMESTAMP
   fromField = dpiTimeStampToUTCTime <$> fromField
 
 dpiTimeStampToUTCTime :: DPITimestamp -> UTCTime
