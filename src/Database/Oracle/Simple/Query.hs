@@ -23,13 +23,13 @@ query conn sql param = do
   _ <- evalStateT (runRowWriter (toRow param) stmt) (Column 0)
   dpiExecute stmt DPI_MODE_EXEC_DEFAULT
   found <- fetch stmt
-  loop stmt [] found
+  loop stmt found
  where
-  loop stmt xs n | n < 1 = pure xs
-  loop stmt xs _ = do
+  loop stmt n | n < 1 = pure []
+  loop stmt _ = do
     tsVal <- getRow stmt
     found <- fetch stmt
-    loop stmt (xs ++ [tsVal]) found
+    (tsVal :) <$> loop stmt found
 
 -- | A version of 'query' that does not perform query substitution.
 query_ :: FromRow a => Connection -> String -> IO [a]
@@ -37,13 +37,13 @@ query_ conn sql = do
   stmt <- prepareStmt conn sql
   dpiExecute stmt DPI_MODE_EXEC_DEFAULT
   found <- fetch stmt
-  loop stmt [] found
+  loop stmt found
  where
-  loop stmt xs n | n < 1 = pure xs
-  loop stmt xs _ = do
+  loop stmt n | n < 1 = pure []
+  loop stmt _ = do
     tsVal <- getRow stmt
     found <- fetch stmt
-    loop stmt (xs ++ [tsVal]) found
+    (tsVal :) <$> loop stmt found
 
 -- | Incrementally process a query
 forEach_ :: FromRow row => Connection -> String -> (row -> IO ()) -> IO ()
@@ -59,4 +59,3 @@ forEach_ conn sql cont = do
         cont tsVal
         found <- fetch stmt
         loop stmt found
-
