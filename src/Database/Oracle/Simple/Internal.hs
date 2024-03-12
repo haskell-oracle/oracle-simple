@@ -42,6 +42,7 @@ import Foreign.Ptr
 import Foreign.Storable.Generic
 import GHC.Generics
 import GHC.TypeLits
+import Numeric.Natural
 import System.IO.Unsafe
 import Test.QuickCheck
 
@@ -68,10 +69,42 @@ newtype DPIShardingKeyColumn = DPIShardingKeyColumn (Ptr DPIShardingKeyColumn)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+data AdditionalConnectionParams = AdditionalConnectionParams
+  { minSessions :: Natural
+  , maxSessions :: Natural
+  , sessionIncrement :: Natural
+  , pingInterval :: Natural
+  , pingTimeout :: Natural
+  , homogeneous :: Natural
+  , getMode :: DPIPoolGetMode
+  , timeout :: Natural
+  , waitTimeout :: Natural
+  , maxLifetimeSession :: Natural
+  , maxSessionsPerShard :: Natural
+  }
+  deriving (Eq, Ord, Show)
+
+defaultAdditionalConnectionParams :: AdditionalConnectionParams
+defaultAdditionalConnectionParams =
+  AdditionalConnectionParams
+    { minSessions = 1
+    , maxSessions = 1
+    , sessionIncrement = 0
+    , pingInterval = 60
+    , pingTimeout = 5000
+    , homogeneous = 1
+    , getMode = DPI_MODE_POOL_GET_NOWAIT
+    , timeout = 0
+    , waitTimeout = 0
+    , maxLifetimeSession = 0
+    , maxSessionsPerShard = 0
+    }
+
 data ConnectionParams = ConnectionParams
   { user :: String
   , pass :: String
   , connString :: String
+  , additionalParams :: Maybe AdditionalConnectionParams
   }
   deriving (Eq, Ord, Show)
 
@@ -233,6 +266,75 @@ fromDPIPurity 0 = Just DPI_PURITY_DEFAULT
 fromDPIPurity 1 = Just DPI_PURITY_NEW
 fromDPIPurity 2 = Just DPI_PURITY_SELF
 fromDPIPurity _ = Nothing
+
+foreign import ccall "dpiContext_initPoolCreateParams"
+  dpiContext_initPoolCreateParams
+    :: DPIContext
+    -> Ptr DPIPoolCreateParams
+    -> IO Int
+
+withDefaultPoolCreateParams :: (Ptr DPIPoolCreateParams -> IO a) -> IO a
+withDefaultPoolCreateParams f = do
+  ctx <- readIORef globalContext
+  alloca $ \poolCreateParamsPtr -> do
+    status <- dpiContext_initPoolCreateParams ctx poolCreateParamsPtr
+    unless (status == 0) $ do
+      error $ "pool create params status wasn't 0" <> show status
+    f poolCreateParamsPtr
+
+data DPIPoolCreateParams = DPIPoolCreateParams
+  { dpi_minSessions :: CUInt
+  , dpi_maxSessions :: CUInt
+  , dpi_sessionIncrement :: CUInt
+  , dpi_pingInterval :: CInt
+  , dpi_pingTimeout :: CInt
+  , dpi_homogeneous :: CInt
+  , dpi_externalAuth :: CInt
+  , dpi_getMode :: DPIPoolGetMode
+  , dpi_outPoolName :: CString
+  , dpi_outPoolNameLength :: CUInt
+  , dpi_timeout :: CUInt
+  , dpi_waitTimeout :: CUInt
+  , dpi_maxLifetimeSession :: CUInt
+  , dpi_plsqlFixupCallback :: CString
+  , dpi_plsqlFixupCallbackLength :: CUInt
+  , dpi_maxSessionsPerShard :: CUInt
+  , dpi_accessTokenCallback :: FunPtr ()
+  , dpi_accessTokenCallbackContext :: Ptr ()
+  }
+  deriving (Show, Eq, Generic)
+  deriving anyclass (GStorable)
+
+data DPIPoolGetMode
+  = DPI_MODE_POOL_GET_FORCEGET
+  | DPI_MODE_POOL_GET_NOWAIT
+  | DPI_MODE_POOL_GET_TIMEDWAIT
+  | DPI_MODE_POOL_GET_WAIT
+  deriving (Show, Eq, Ord, Enum, Generic)
+
+toDPIPoolGetMode :: DPIPoolGetMode -> CUInt
+toDPIPoolGetMode DPI_MODE_POOL_GET_FORCEGET = 0x0000
+toDPIPoolGetMode DPI_MODE_POOL_GET_NOWAIT = 0x0001
+toDPIPoolGetMode DPI_MODE_POOL_GET_TIMEDWAIT = 0x0002
+toDPIPoolGetMode DPI_MODE_POOL_GET_WAIT = 0x0003
+
+fromDPIPoolGetMode :: CUInt -> Maybe DPIPoolGetMode
+fromDPIPoolGetMode 0 = Just DPI_MODE_POOL_GET_FORCEGET
+fromDPIPoolGetMode 1 = Just DPI_MODE_POOL_GET_NOWAIT
+fromDPIPoolGetMode 2 = Just DPI_MODE_POOL_GET_TIMEDWAIT
+fromDPIPoolGetMode 3 = Just DPI_MODE_POOL_GET_WAIT
+fromDPIPoolGetMode _ = Nothing
+
+instance Storable DPIPoolGetMode where
+  sizeOf _ = sizeOf (undefined :: CUInt)
+  alignment _ = alignment (undefined :: CUInt)
+  peek ptr = do
+    mbPoolGetMode <- fromDPIPoolGetMode <$> peek (castPtr ptr)
+    case mbPoolGetMode of
+      Nothing -> fail "DPIPoolGetMode.peek: Invalid get pool mode"
+      Just mode -> pure mode
+  poke ptr mode =
+    poke (castPtr ptr) (toDPIPoolGetMode mode)
 
 data ConnectionCreateParams = ConnectionCreateParams
   { authMode :: DPIAuthMode

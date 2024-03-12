@@ -1,6 +1,14 @@
 {-# LANGUAGE ViewPatterns #-}
 
-module Database.Oracle.Simple.Pool (Pool, createPool, acquireConnection, withPool, withPoolConnection, closePool) where
+module Database.Oracle.Simple.Pool
+  ( Pool
+  , createPool
+  , acquireConnection
+  , withPool
+  , withPoolConnection
+  , closePool
+  )
+where
 
 import Control.Exception (bracket)
 import Data.IORef (readIORef)
@@ -17,20 +25,23 @@ import Foreign
   , withForeignPtr
   )
 import Foreign.C (CInt (CInt), CString, CUInt (CUInt), withCStringLen)
+import Foreign.Storable (poke)
 
 import Database.Oracle.Simple.Internal
   ( Connection (Connection)
-  , ConnectionCreateParams
-  , ConnectionParams (connString, pass, user)
+  , ConnectionParams (connString, pass, user, additionalParams)
   , DPICommonCreateParams
   , DPIConn (DPIConn)
   , DPIContext (DPIContext)
   , DPIPool (DPIPool)
+  , AdditionalConnectionParams (..)
+  , DPIPoolCreateParams (..)
   , close
   , dpiConn_close_finalizer
   , dpiConn_release_finalizer
   , globalContext
   , throwOracleError
+  , withDefaultPoolCreateParams
   )
 
 -- | A session pool; a group of stateless connections ("sessions") to the database.
@@ -47,8 +58,35 @@ createPool params = do
     withCStringLen (user params) $ \(userCString, fromIntegral -> userLen) ->
       withCStringLen (pass params) $ \(passCString, fromIntegral -> passLen) ->
         withCStringLen (connString params) $ \(connCString, fromIntegral -> connLen) -> do
-          throwOracleError
-            =<< dpiPool_create ctx userCString userLen passCString passLen connCString connLen nullPtr nullPtr connPtr
+          let
+            poolCreate paramsPtr =
+              dpiPool_create ctx userCString userLen passCString passLen connCString connLen nullPtr paramsPtr connPtr
+          status <-
+            case additionalParams params of
+              Nothing -> poolCreate nullPtr
+              Just addParams ->
+                withDefaultPoolCreateParams $ \defaultPoolParmsPtr -> do
+                  defaultPoolParams <- peek defaultPoolParmsPtr
+
+                  poke
+                    defaultPoolParmsPtr
+                    defaultPoolParams
+                      { dpi_minSessions = fromIntegral $ minSessions addParams
+                      , dpi_maxSessions = fromIntegral $ maxSessions addParams
+                      , dpi_sessionIncrement = fromIntegral $ sessionIncrement addParams
+                      , dpi_pingInterval = fromIntegral $ pingInterval addParams
+                      , dpi_pingTimeout = fromIntegral $ pingTimeout addParams
+                      , dpi_homogeneous = fromIntegral $ homogeneous addParams
+                      , dpi_getMode = getMode addParams
+                      , dpi_timeout = fromIntegral $ timeout addParams
+                      , dpi_waitTimeout = fromIntegral $ waitTimeout addParams
+                      , dpi_maxLifetimeSession = fromIntegral $ maxLifetimeSession addParams
+                      , dpi_maxSessionsPerShard = fromIntegral $ maxSessionsPerShard addParams
+                      }
+
+                  poolCreate defaultPoolParmsPtr
+
+          throwOracleError status
           peek connPtr
   fptr <- newForeignPtr_ poolPtr
   addForeignPtrFinalizer dpiPool_release_finalizer fptr
@@ -73,7 +111,7 @@ foreign import ccall unsafe "dpiPool_create"
     -- ^ uint32_t connLength
     -> Ptr DPICommonCreateParams
     -- ^ const dpiCommonCreateParams *commonParams
-    -> Ptr ConnectionCreateParams
+    -> Ptr DPIPoolCreateParams
     -- ^ const dpiPoolCreateParams *createParams
     -> Ptr DPIPool
     -- ^ dpiPool **pool
