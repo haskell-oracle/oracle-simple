@@ -50,7 +50,7 @@ main :: IO ()
 main = withPool params $ hspec . spec
 
 params :: ConnectionParams
-params = ConnectionParams "username" "password" "localhost/devdb"
+params = ConnectionParams "username" "password" "localhost/devdb" Nothing
 
 spec :: Pool -> Spec
 spec pool = do
