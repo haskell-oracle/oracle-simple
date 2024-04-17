@@ -12,6 +12,7 @@ import Data.Fixed
 import Data.Time
 import Data.Int
 import Data.Text
+import Numeric.Natural
 import Database.Oracle.Simple.Internal
 import qualified Data.Aeson as Aeson
 import Data.Proxy
@@ -38,7 +39,15 @@ instance ToField Int64 where
   toDPINativeType _ = DPI_NATIVE_TYPE_INT64
   toField = pure . AsInt64
 
+instance ToField Int32 where
+  toDPINativeType _ = toDPINativeType (Proxy @Int64)
+  toField = pure . AsInt64 . fromIntegral
+
 instance ToField Int where
+  toDPINativeType _ = toDPINativeType (Proxy @Int64)
+  toField = pure . AsInt64 . fromIntegral
+
+instance ToField Natural where
   toDPINativeType _ = toDPINativeType (Proxy @Int64)
   toField = pure . AsInt64 . fromIntegral
 
