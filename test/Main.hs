@@ -1,6 +1,6 @@
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
@@ -8,6 +8,7 @@
 module Main where
 
 import Control.Exception
+import Control.Monad ((<=<))
 import Control.Monad.IO.Class (liftIO)
 import Data.Aeson
 import Data.Fixed
@@ -23,9 +24,7 @@ import Database.Oracle.Simple
 
 data SumType = This | That
   deriving (Generic, Eq, Show)
-
-instance ToJSON SumType
-instance FromJSON SumType
+  deriving anyclass (FromJSON, ToJSON)
 
 data JsonData = JsonData
   { string :: String
@@ -38,6 +37,7 @@ data JsonData = JsonData
   }
   deriving (Generic, Eq, Show)
   deriving anyclass (FromJSON, ToJSON)
+  deriving (FromField, ToField) via AesonField JsonData
 
 data MixTable = MixTable
   { intColumn :: Int
@@ -66,8 +66,7 @@ spec pool = do
             (fromIntegral day)
 
     describe "Connection tests" $ do
-      it "Should check connetion health" $ \conn ->
-        (`shouldBe` True) =<< isHealthy conn
+      it "Should check connetion health" $ (`shouldBe` True) <=< isHealthy
 
     describe "DPITimeStamp tests" $ do
       it "Should roundtrip DPITimestamp through UTCTime" $ \_ -> do
@@ -181,7 +180,7 @@ spec pool = do
         results <- query_ @(Only Int) conn "select * from savepoint_nesting_test"
         execute_ conn "drop table savepoint_nesting_test"
         results `shouldBe` [Only 1, Only 2, Only 3, Only 4, Only 6] -- should roll back to inner savepoint
- 
+
       it "handles consecutive transactions" $ \conn -> do
         execute_ conn "create table transactions_test(text_column number(10,0) primary key)"
         -- transaction that inserts rows

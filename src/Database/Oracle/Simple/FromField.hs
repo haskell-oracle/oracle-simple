@@ -1,31 +1,27 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE NumericUnderscores #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 
 module Database.Oracle.Simple.FromField where
 
-import Control.Exception
-import Control.Monad
+import Control.Exception (Exception, SomeException, catch, evaluate, displayException, throwIO)
+import Control.Monad ((<=<))
 import qualified Data.ByteString as BS
-import Data.Coerce
-import Data.Fixed
-import Data.Int
-import Data.Proxy
-import Data.Text
-import Data.Text.Encoding
-import Data.Time
-import Data.Word
+import Data.Coerce (coerce)
+import Data.Fixed (Fixed(..), Pico)
+import Data.Int (Int64)
+import Data.Proxy (Proxy(..))
+import Data.Text (Text)
+import qualified Data.Text as T
+import qualified Data.Text.Encoding as T
+import qualified Data.Time as Time
+import Data.Word (Word64)
+import Foreign.C.String (peekCString)
+import Foreign.Ptr (Ptr)
+import Foreign.Storable.Generic (peek)
+
 import Database.Oracle.Simple.Internal
-import Foreign.C.String
-import Foreign.C.Types
-import Foreign.Ptr
-import Foreign.Storable.Generic
-import GHC.Generics
 
 -- | A type that may be parsed from a database field.
 class FromField a where
@@ -81,18 +77,18 @@ instance (FromField a) => FromField (Maybe a) where
       then pure Nothing
       else Just <$> readDPIDataBuffer (fromField @a) ptr
 
-instance FromField UTCTime where
+instance FromField Time.UTCTime where
   fromDPINativeType _ = DPI_NATIVE_TYPE_TIMESTAMP
   fromField = dpiTimeStampToUTCTime <$> fromField
 
-dpiTimeStampToUTCTime :: DPITimestamp -> UTCTime
+dpiTimeStampToUTCTime :: DPITimestamp -> Time.UTCTime
 dpiTimeStampToUTCTime dpi =
   let DPITimestamp{..} = dpiTimeStampToUTCDPITimeStamp dpi
-      local = LocalTime d tod
-      d = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
-      tod = TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second + picos)
+      local = Time.LocalTime d tod
+      d = Time.fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+      tod = Time.TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second + picos)
       picos = MkFixed (fromIntegral fsecond * 1000) :: Pico
-   in localTimeToUTC utc local
+   in Time.localTimeToUTC Time.utc local
 
 -- | Encapsulates all information needed to parse a field as a Haskell value.
 newtype FieldParser a = FieldParser
@@ -147,10 +143,10 @@ getText = buildText <=< peek <=< dpiData_getBytes
     gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
     encoding <- peekCString dpiBytesEncoding
     decodeFn <- case encoding of
-      "ASCII" -> pure decodeASCII
-      "UTF-8" -> pure decodeUtf8
-      "UTF-16BE" -> pure decodeUtf16BE
-      "UTF-16LE" -> pure decodeUtf16LE
+      "ASCII" -> pure T.decodeASCII
+      "UTF-8" -> pure T.decodeUtf8
+      "UTF-16BE" -> pure T.decodeUtf16BE
+      "UTF-16LE" -> pure T.decodeUtf16LE
       otherEnc -> throwIO $ UnsupportedEncoding otherEnc
     evaluate (decodeFn gotBytes)
       `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
@@ -158,7 +154,7 @@ getText = buildText <=< peek <=< dpiData_getBytes
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
-getString = fmap unpack <$> getText
+getString = fmap T.unpack <$> getText
 
 -- | Get a `DPITimestamp` from the buffer
 getTimestamp :: ReadDPIBuffer DPITimestamp

@@ -1,31 +1,26 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 
 module Database.Oracle.Simple.FromRow where
 
 import Control.Exception hiding (TypeError)
-import Control.Monad
-import Control.Monad.State.Strict
-import Data.Functor.Identity
-import Data.Proxy
-import Data.Word
-import Database.Oracle.Simple.FromField
-import Database.Oracle.Simple.Internal
+import Control.Monad (unless)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.State.Strict (StateT, evalStateT, modify, get)
+import Data.Functor.Identity (Identity)
+import Data.Proxy (Proxy(..))
+import Data.Word (Word32)
 import GHC.Generics
 import GHC.TypeLits
+
+import Database.Oracle.Simple.FromField
+import Database.Oracle.Simple.Internal
 
 class FromRow a where
   fromRow :: RowParser a
@@ -87,7 +82,7 @@ instance (GFromRow m) => GFromRow (S1 i m) where
 instance (GFromRow l, GFromRow r) => GFromRow (l :*: r) where
   gFromRow = (:*:) <$> gFromRow <*> gFromRow
 
-instance (TypeError ('Text "Sum types not supported")) => GFromRow (l :+: r) where
+instance (() ~ TypeError ('Text "Sum types not supported")) => GFromRow (l :+: r) where
   gFromRow = error "Sum types not supported"
 
 instance (FromField a) => GFromRow (K1 i a) where
@@ -96,7 +91,7 @@ instance (FromField a) => GFromRow (K1 i a) where
 newtype RowParser a = RowParser {runRowParser :: DPIStmt -> StateT Word32 IO a}
 
 instance Functor RowParser where
-  fmap f g = RowParser $ \dpiStmt -> f <$> runRowParser g dpiStmt
+  fmap f g = RowParser $ fmap f . runRowParser g
 
 instance Applicative RowParser where
   pure a = RowParser $ \_ -> pure a

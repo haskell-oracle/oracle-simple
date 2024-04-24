@@ -8,7 +8,7 @@ license:             MIT
 license-file:        LICENSE
 author:              David Johnson
 maintainer:          djohnson.m@gmail.com, khandkararjun@gmail.com
-copyright:           H-E-B (c) 2021
+copyright:           H-E-B (c) 2024
 category:            Database
 build-type:          Simple
 extra-source-files:  CHANGELOG.md
@@ -40,14 +40,14 @@ library
     Database.Oracle.Simple
   other-modules:
       Database.Oracle.Simple.Internal
-    , Database.Oracle.Simple.FromRow
-    , Database.Oracle.Simple.FromField
-    , Database.Oracle.Simple.ToRow
-    , Database.Oracle.Simple.ToField
-    , Database.Oracle.Simple.Query
     , Database.Oracle.Simple.Execute
-    , Database.Oracle.Simple.Pool
+    , Database.Oracle.Simple.FromField
+    , Database.Oracle.Simple.FromRow
     , Database.Oracle.Simple.JSON
+    , Database.Oracle.Simple.Pool
+    , Database.Oracle.Simple.Query
+    , Database.Oracle.Simple.ToField
+    , Database.Oracle.Simple.ToRow
     , Database.Oracle.Simple.Transaction
   build-depends:
     base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, aeson, scientific, vector, uuid, random

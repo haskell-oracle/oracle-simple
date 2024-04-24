@@ -5,9 +5,10 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Database.Oracle.Simple.JSON (JsonDecodeError (..)) where
+module Database.Oracle.Simple.JSON (AesonField(..), JsonDecodeError (..)) where
 
 import Control.Exception (Exception (displayException), SomeException, catch, evaluate, throwIO)
 import Control.Monad ((<=<))
@@ -16,6 +17,7 @@ import Data.Aeson.KeyMap as KeyMap
 import Data.ByteString (packCStringLen)
 import qualified Data.ByteString.Char8 as C8
 import Data.ByteString.Lazy (toStrict)
+import Data.Coerce (coerce)
 import Data.List as L
 import Data.Proxy (Proxy (Proxy))
 import Data.Scientific (fromFloatDigits)
@@ -47,19 +49,31 @@ import Database.Oracle.Simple.Internal
   )
 import Database.Oracle.Simple.ToField (ToField (toDPINativeType, toField))
 
-instance {-# OVERLAPPABLE #-} (Aeson.ToJSON a) => ToField a where
+-- | Use this newtype with the DerivingVia extension to
+-- derive ToField/FromField instances for types that you want
+-- to serialize via their Aeson instance.
+newtype AesonField a = AesonField { unAesonField :: a }
+  deriving newtype (Aeson.ToJSON, Aeson.FromJSON)
+
+instance (Aeson.ToJSON a) => ToField (AesonField a) where
   toDPINativeType _ = DPI_NATIVE_TYPE_BYTES
 
   -- Oracle allows JSON data to be inserted using the character API.
-  toField = fmap AsBytes . mkDPIBytesUTF8 . C8.unpack . toStrict . Aeson.encode
+  toField
+    = fmap AsBytes
+    . mkDPIBytesUTF8
+    . C8.unpack
+    . toStrict
+    . Aeson.encode
+    . unAesonField
 
 -- | For use with columns that have @JSON@ data type (since Oracle 21c)
-instance {-# OVERLAPPABLE #-} (Aeson.FromJSON a) => FromField a where
+instance (Aeson.FromJSON a) => FromField (AesonField a) where
   fromDPINativeType _ = DPI_NATIVE_TYPE_JSON
 
   -- ODPI does not support casting from DPI_ORACLE_TYPE_JSON to DPI_NATIVE_TYPE_BYTES.
   -- This means we need to build an aeson Value from the top-level DPIJsonNode.
-  fromField = FieldParser getJson
+  fromField = coerce (FieldParser (getJson @a))
 
 getJson :: (Aeson.FromJSON a) => ReadDPIBuffer a
 getJson = parseJson <=< peek <=< dpiJson_getValue <=< dpiData_getJson

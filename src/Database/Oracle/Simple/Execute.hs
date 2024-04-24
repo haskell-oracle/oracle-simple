@@ -5,6 +5,7 @@ module Database.Oracle.Simple.Execute where
 import Control.Monad (foldM)
 import Control.Monad.State.Strict (evalStateT)
 import Data.Word (Word64)
+
 import Database.Oracle.Simple.Internal
   ( Column (Column)
   , Connection
@@ -22,16 +23,14 @@ execute conn sql param = do
   stmt <- prepareStmt conn sql
   _ <- evalStateT (runRowWriter (toRow param) stmt) (Column 0)
   dpiExecute stmt DPI_MODE_EXEC_DEFAULT
-  rowsAffected <- getRowCount stmt
-  pure rowsAffected
+  getRowCount stmt
 
 -- | A version of 'execute' that does not perform query substitution.
 execute_ :: Connection -> String -> IO Word64
 execute_ conn sql = do
   stmt <- prepareStmt conn sql
   dpiExecute stmt DPI_MODE_EXEC_DEFAULT
-  rowsAffected <- getRowCount stmt
-  pure rowsAffected
+  getRowCount stmt
 
 -- | Execute a multi-row INSERT, UPDATE or other SQL query that is not expected to return results.
 -- Returns the number of rows affected. If the list of parameters is empty, the function will simply
