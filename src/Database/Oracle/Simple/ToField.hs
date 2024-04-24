@@ -1,21 +1,20 @@
-{-# LANGUAGE NumericUnderscores #-}
-{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE FlexibleInstances #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
-{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
+{-# LANGUAGE TypeApplications #-}
 
 module Database.Oracle.Simple.ToField where
 
-import Data.Fixed
-import Data.Time
-import Data.Int
-import Data.Text
-import Numeric.Natural
-import Database.Oracle.Simple.Internal
 import qualified Data.Aeson as Aeson
-import Data.Proxy
+import Data.Int (Int, Int32, Int64)
+import Data.Proxy (Proxy(..))
+import Foreign.Marshal.Utils (fromBool)
+import qualified Data.Text as T
+import Data.Text (Text)
+import Data.Time (UTCTime(..), ZonedTime(..), LocalTime(..), TimeOfDay(..), TimeZone(..), toGregorian, utcToZonedTime, utc)
+import Numeric.Natural (Natural)
+
+import Database.Oracle.Simple.Internal
 
 class ToField a where
   toDPINativeType :: Proxy a -> DPINativeType
@@ -23,13 +22,17 @@ class ToField a where
   toField :: a -> IO WriteBuffer
   -- ^ Write a value of type @a@ to the data buffer.
 
+instance ToField Bool where
+  toDPINativeType _ = DPI_NATIVE_TYPE_BOOLEAN
+  toField = pure . AsBoolean . fromBool
+
 instance ToField Double where
   toDPINativeType _ = DPI_NATIVE_TYPE_DOUBLE
   toField = pure . AsDouble
 
 instance ToField Text where
   toDPINativeType _ = DPI_NATIVE_TYPE_BYTES
-  toField = fmap AsBytes . mkDPIBytesUTF8 . unpack
+  toField = fmap AsBytes . mkDPIBytesUTF8 . T.unpack
 
 instance ToField String where
   toDPINativeType _ = DPI_NATIVE_TYPE_BYTES

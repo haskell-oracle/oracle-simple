@@ -16,7 +16,7 @@ module Database.Oracle.Simple.Transaction
   ) where
 
 import Control.Exception (catch, throw)
-import Control.Monad (replicateM, void, when)
+import Control.Monad ((<=<), replicateM, void, when)
 import Data.List (unfoldr)
 import Data.UUID (UUID, toString)
 import Data.UUID.V4 (nextRandom)
@@ -118,8 +118,7 @@ foreign import ccall unsafe "dpiConn_tpcCommit"
 rollbackTransaction :: Connection -> Transaction -> IO ()
 rollbackTransaction (Connection fptr) dpiTransaction =
   withForeignPtr fptr $ \conn ->
-    withDPIXid dpiTransaction $ \dpiXid ->
-      throwOracleError =<< dpiConn_tpcRollback conn dpiXid
+    withDPIXid dpiTransaction $ throwOracleError <=< dpiConn_tpcRollback conn
 
 foreign import ccall unsafe "dpiConn_tpcRollback"
   dpiConn_tpcRollback
@@ -158,10 +157,8 @@ withDPIXid Transaction{..} action =
 withSavepoint :: Connection -> IO a -> IO a
 withSavepoint conn action = do
   savepoint <- newSavepoint conn
-  result <-
-    action
-      `catch` (\(e :: OracleError) -> rollbackToSavepoint conn savepoint >> throw e)
-  pure result
+  action
+    `catch` (\(e :: OracleError) -> rollbackToSavepoint conn savepoint >> throw e)
 
 -- ** Low-level savepoint interface
 

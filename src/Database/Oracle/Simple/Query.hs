@@ -1,6 +1,8 @@
 module Database.Oracle.Simple.Query where
 
 import Control.Monad.State.Strict (evalStateT)
+import GHC.Generics (Generic)
+
 import Database.Oracle.Simple.FromField (FromField)
 import Database.Oracle.Simple.FromRow (FromRow, getRow)
 import Database.Oracle.Simple.Internal
@@ -13,7 +15,6 @@ import Database.Oracle.Simple.Internal
   )
 import Database.Oracle.Simple.ToField (ToField)
 import Database.Oracle.Simple.ToRow (RowWriter (runRowWriter), ToRow, toRow)
-import GHC.Generics (Generic)
 
 -- | Perform a SELECT or other SQL query that is expected to return results.
 -- All results are retrieved and converted before this function ends.

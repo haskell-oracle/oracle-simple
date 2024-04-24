@@ -1,4 +1,3 @@
-{-# LANGUAGE BangPatterns #-}
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE FlexibleContexts #-}
@@ -8,28 +7,26 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TypeSynonymInstances #-}
 {-# LANGUAGE UndecidableInstances #-}
 
 module Database.Oracle.Simple.ToRow where
 
-import Control.Monad
-import Control.Monad.State.Strict
-import Data.Functor.Identity
+import Control.Monad (void)
+import Control.Monad.IO.Class (liftIO)
+import Control.Monad.State.Strict (StateT, get, modify)
+import Data.Functor.Identity (Identity)
 import qualified Data.List as L
-import Data.Proxy
-import Data.Traversable
-import Data.Word
-import Database.Oracle.Simple.Internal
-import Database.Oracle.Simple.ToField
-import Foreign.Ptr
+import Data.Proxy (Proxy(..))
 import GHC.Generics
 import GHC.TypeLits
+
+import Database.Oracle.Simple.Internal
+import Database.Oracle.Simple.ToField
 
 newtype RowWriter a = RowWriter {runRowWriter :: DPIStmt -> StateT Column IO a}
 
 instance Functor RowWriter where
-  fmap f g = RowWriter $ \dpiStmt -> f <$> runRowWriter g dpiStmt
+  fmap f g = RowWriter $ fmap f . runRowWriter g
 
 instance Applicative RowWriter where
   pure a = RowWriter $ \_ -> pure a
@@ -91,7 +88,7 @@ instance (GToRow m) => GToRow (S1 i m) where
 instance (GToRow l, GToRow r) => GToRow (l :*: r) where
   gToRow (l :*: r) = gToRow l >> gToRow r
 
-instance (TypeError ('Text "Sum types not supported")) => GToRow (l :+: r) where
+instance (() ~ TypeError ('Text "Sum types not supported")) => GToRow (l :+: r) where
   gToRow = error "Sum types not supported"
 
 instance (ToField a) => GToRow (K1 i a) where

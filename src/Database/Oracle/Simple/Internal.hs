@@ -1,50 +1,38 @@
-{-# LANGUAGE BinaryLiterals #-}
-{-# LANGUAGE DefaultSignatures #-}
 {-# LANGUAGE DeriveAnyClass #-}
 {-# LANGUAGE DeriveGeneric #-}
-{-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE DerivingVia #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE KindSignatures #-}
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
-{-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE RankNTypes #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
-{-# LANGUAGE TypeApplications #-}
-{-# LANGUAGE TypeOperators #-}
-{-# LANGUAGE TypeSynonymInstances #-}
-{-# LANGUAGE UndecidableInstances #-}
 {-# LANGUAGE ViewPatterns #-}
 
 module Database.Oracle.Simple.Internal where
 
-import Control.Exception
-import Control.Monad
-import Control.Monad.State.Strict
-import Data.Coerce
-import Data.IORef
-import Data.Kind
+import Control.Exception (Exception, bracket, throwIO)
+import Control.Monad ((<=<), unless)
+import Control.Monad.State.Strict (StateT)
+import Data.Coerce (coerce)
+import Data.IORef (IORef, newIORef, readIORef)
 import Data.List as L
-import Data.Text
-import Data.Time
-import Data.Typeable
-import Data.Word
-import Foreign
-import Foreign.C
-import Foreign.C.String
-import Foreign.C.Types
-import Foreign.Marshal.Utils
-import Foreign.Ptr
-import Foreign.Storable.Generic
-import GHC.Generics
-import GHC.TypeLits
-import Numeric.Natural
-import System.IO.Unsafe
-import Test.QuickCheck
+import Data.Text (Text)
+import qualified Data.Time as Time
+import Data.Typeable (Typeable)
+import Data.Int (Int8, Int16, Int32, Int64)
+import Data.Word (Word8, Word16, Word32, Word64)
+import Foreign.C.String (CString, newCString, newCStringLen, peekCString, peekCStringLen, withCStringLen)
+import Foreign.C.Types (CInt(..), CUInt(..))
+import Foreign.Marshal.Alloc (alloca, free)
+import Foreign.ForeignPtr (ForeignPtr, addForeignPtrFinalizer, finalizeForeignPtr, newForeignPtr_, withForeignPtr)
+import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
+import Foreign.Storable.Generic (GStorable, Storable(..))
+import GHC.Generics (Generic)
+import GHC.TypeLits (Natural)
+import System.IO.Unsafe (unsafePerformIO)
+import Test.QuickCheck (Arbitrary(..), choose)
 
 newtype DPIStmt = DPIStmt (Ptr DPIStmt)
   deriving (Show, Eq)
@@ -649,14 +637,14 @@ dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
   currentMinutes = (fromIntegral hour * 60) + fromIntegral minute
   (hours, minutes) = ((currentMinutes + offsetInMinutes) `mod` 1440) `quotRem` 60
 
-  gregorianDay = fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+  gregorianDay = Time.fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
   updatedDay
     | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440 =
-        addDays 1 gregorianDay
+        Time.addDays 1 gregorianDay
     | fromIntegral currentMinutes + fromIntegral offsetInMinutes < 0 =
-        addDays (-1) gregorianDay
+        Time.addDays (-1) gregorianDay
     | otherwise = gregorianDay
-  (year', month', day') = toGregorian updatedDay
+  (year', month', day') = Time.toGregorian updatedDay
   utcDpi =
     dpi
       { tzHourOffset = 0
@@ -1059,6 +1047,7 @@ data WriteBuffer
   | AsString CString
   | AsBytes DPIBytes
   | AsTimestamp DPITimestamp
+  | AsBoolean Int
   | AsNull
   deriving (Show, Eq, Generic)
 
@@ -1075,6 +1064,7 @@ instance Storable WriteBuffer where
   poke ptr (AsString cStringVal) = poke (castPtr ptr) cStringVal
   poke ptr (AsBytes dpiBytesVal) = poke (castPtr ptr) dpiBytesVal
   poke ptr (AsTimestamp dpiTimeStampVal) = poke (castPtr ptr) dpiTimeStampVal
+  poke ptr (AsBoolean cbool) = poke (castPtr ptr) cbool
   poke ptr AsNull = poke (castPtr ptr) nullPtr
 
 -- | Free all pointers in the WriteBuffer.
@@ -1153,8 +1143,7 @@ foreign import ccall "dpiConn_ping"
 -- | Ping the connection to see if it is still alive
 ping :: Connection -> IO Bool
 ping (Connection fptr) =
-  withForeignPtr fptr $ \conn ->
-    (== 0) <$> dpiConn_ping conn
+  withForeignPtr fptr $ fmap (== 0) . dpiConn_ping
 
 -- | DPI_EXPORT int dpiConn_getIsHealthy(dpiConn *conn, int *isHealthy);
 foreign import ccall unsafe "dpiConn_getIsHealthy"
