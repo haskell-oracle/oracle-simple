@@ -3,15 +3,17 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Database.Oracle.Simple.ToField where
+module Database.Oracle.Simple.ToField
+  ( ToField (..),
+    utcTimeToDPITimestamp,
+  )
+where
 
-import qualified Data.Aeson as Aeson
-import Data.Int (Int, Int32, Int64)
-import Data.Proxy (Proxy(..))
-import Foreign.Marshal.Utils (fromBool)
+import Data.Int (Int32, Int64)
+import Data.Proxy (Proxy (..))
 import qualified Data.Text as T
-import Data.Text (Text)
-import Data.Time (UTCTime(..), ZonedTime(..), LocalTime(..), TimeOfDay(..), TimeZone(..), toGregorian, utcToZonedTime, utc)
+import Data.Time (LocalTime (..), TimeOfDay (..), TimeZone (..), UTCTime (..), ZonedTime (..), toGregorian, utc, utcToZonedTime)
+import Foreign.Marshal.Utils (fromBool)
 import Numeric.Natural (Natural)
 
 import Database.Oracle.Simple.Internal
@@ -19,6 +21,7 @@ import Database.Oracle.Simple.Internal
 class ToField a where
   toDPINativeType :: Proxy a -> DPINativeType
   -- ^ The DPI native type of the value written to the buffer.
+
   toField :: a -> IO WriteBuffer
   -- ^ Write a value of type @a@ to the data buffer.
 
@@ -30,7 +33,7 @@ instance ToField Double where
   toDPINativeType _ = DPI_NATIVE_TYPE_DOUBLE
   toField = pure . AsDouble
 
-instance ToField Text where
+instance ToField T.Text where
   toDPINativeType _ = DPI_NATIVE_TYPE_BYTES
   toField = fmap AsBytes . mkDPIBytesUTF8 . T.unpack
 
@@ -77,14 +80,15 @@ utcTimeToDPITimestamp utcTime = dpiTimeStampToUTCDPITimeStamp dpiTs
     TimeZone {..} = zonedTimeZone
     (seconds, fractionalSeconds) = properFraction todSec
     (hourOffset, minuteOffset) = timeZoneMinutes `quotRem` 60
-    dpiTs = DPITimestamp
-      { year           = fromIntegral year
-      , month          = fromIntegral month
-      , day            = fromIntegral day
-      , hour           = fromIntegral todHour
-      , minute         = fromIntegral todMin
-      , second         = seconds
-      , fsecond        = truncate (fractionalSeconds * 1e9)
-      , tzHourOffset   = fromIntegral hourOffset
-      , tzMinuteOffset = fromIntegral minuteOffset
-      }
+    dpiTs =
+      DPITimestamp
+        { year = fromIntegral year
+        , month = fromIntegral month
+        , day = fromIntegral day
+        , hour = fromIntegral todHour
+        , minute = fromIntegral todMin
+        , second = seconds
+        , fsecond = truncate (fractionalSeconds * 1e9)
+        , tzHourOffset = fromIntegral hourOffset
+        , tzMinuteOffset = fromIntegral minuteOffset
+        }

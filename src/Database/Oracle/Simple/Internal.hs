@@ -4,35 +4,86 @@
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
-{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE NamedFieldPuns #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
 
-module Database.Oracle.Simple.Internal where
+{- HLINT ignore "Avoid restricted function" -}
+
+module Database.Oracle.Simple.Internal
+  ( DPINativeType (..),
+    DPIData (..),
+    DPIBytes (..),
+    DPIStmt (..),
+    DPIModeExec (..),
+    DPIConn (..),
+    DPIContext (..),
+    DPITimestamp (..),
+    DPIOracleType (..),
+    DPICommonCreateParams (..),
+    DPIPoolCreateParams (..),
+    AdditionalConnectionParams (..),
+    DPIPool (..),
+    WriteBuffer (..),
+    ReadBuffer (..),
+    Column (..),
+    Only (..),
+    Connection (..),
+    ConnectionParams (..),
+    OracleError (..),
+    ErrorInfo (..),
+    renderErrorInfo,
+    ping,
+    fetch,
+    close,
+    connect,
+    withConnection,
+    withConnCreateParams,
+    getClientVersion,
+    getServerVersion,
+    globalContext,
+    withDefaultPoolCreateParams,
+    defaultAdditionalConnectionParams,
+    dpiExecute,
+    getRowCount,
+    getQueryValue,
+    prepareStmt,
+    bindValueByPos,
+    freeWriteBuffer,
+    mkDPIBytesUTF8,
+    isHealthy,
+    dpiTimeStampToUTCDPITimeStamp,
+    throwOracleError,
+    dpiData_getIsNull,
+    dpiData_getDouble,
+    dpiData_getFloat,
+    dpiData_getInt64,
+    dpiData_getUint64,
+    dpiData_getBytes,
+    dpiData_getBool,
+    dpiData_getTimestamp,
+    dpiConn_close_finalizer,
+    dpiConn_release_finalizer,
+  )
+where
 
 import Control.Exception (Exception, bracket, throwIO)
-import Control.Monad ((<=<), unless)
-import Control.Monad.State.Strict (StateT)
-import Data.Coerce (coerce)
+import Control.Monad (unless, (<=<))
 import Data.IORef (IORef, newIORef, readIORef)
-import Data.List as L
-import Data.Text (Text)
+import Data.Int (Int16, Int64, Int8)
 import qualified Data.Time as Time
 import Data.Typeable (Typeable)
-import Data.Int (Int8, Int16, Int32, Int64)
-import Data.Word (Word8, Word16, Word32, Word64)
+import Data.Word (Word16, Word32, Word64, Word8)
 import Foreign.C.String (CString, newCString, newCStringLen, peekCString, peekCStringLen, withCStringLen)
-import Foreign.C.Types (CInt(..), CUInt(..))
-import Foreign.Marshal.Alloc (alloca, free)
+import Foreign.C.Types (CInt (..), CUInt (..))
 import Foreign.ForeignPtr (ForeignPtr, addForeignPtrFinalizer, finalizeForeignPtr, newForeignPtr_, withForeignPtr)
+import Foreign.Marshal.Alloc (alloca, free)
 import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
-import Foreign.Storable.Generic (GStorable, Storable(..))
+import Foreign.Storable.Generic (GStorable, Storable (..))
 import GHC.Generics (Generic)
 import GHC.TypeLits (Natural)
 import System.IO.Unsafe (unsafePerformIO)
-import Test.QuickCheck (Arbitrary(..), choose)
 
 newtype DPIStmt = DPIStmt (Ptr DPIStmt)
   deriving (Show, Eq)
@@ -96,9 +147,9 @@ data ConnectionParams = ConnectionParams
   }
   deriving (Eq, Ord, Show)
 
-connectDPI
-  :: ConnectionParams
-  -> IO DPIConn
+connectDPI ::
+  ConnectionParams ->
+  IO DPIConn
 connectDPI params = do
   ctx <- readIORef globalContext
   alloca $ \connPtr -> do
@@ -109,9 +160,10 @@ connectDPI params = do
             =<< dpiConn_create ctx userCString userLen passCString passLen connCString connLen nullPtr nullPtr connPtr
           peek connPtr
 
--- | The order that the finalizers are declared in is very important
--- The close must be defined /last/ so it can run /first/
--- Per the docs, "The finalizer will run before all other finalizers for the same object which have already been registered."
+{- | The order that the finalizers are declared in is very important
+The close must be defined /last/ so it can run /first/
+Per the docs, "The finalizer will run before all other finalizers for the same object which have already been registered."
+-}
 connect :: ConnectionParams -> IO Connection
 connect params = do
   DPIConn connPtr <- connectDPI params
@@ -125,28 +177,28 @@ withConnection :: ConnectionParams -> (Connection -> IO c) -> IO c
 withConnection params = bracket (connect params) close
 
 foreign import ccall unsafe "dpiConn_create"
-  dpiConn_create
-    :: DPIContext
-    -- ^ const dpiContext *context
-    -> CString
-    -- ^ const char *userName
-    -> CUInt
-    -- ^ uint32_t userNameLength
-    -> CString
-    -- ^ const char *password
-    -> CUInt
-    -- ^ uint32_t passwordLength
-    -> CString
-    -- ^ const char *connectString
-    -> CUInt
-    -- ^ uint32_t conn length
-    -> Ptr DPICommonCreateParams
-    -- ^ const dpiCommonCreateParams *commonParams
-    -> Ptr ConnectionCreateParams
-    -- ^ const dpiConnCreateParams *createParams
-    -> Ptr DPIConn
-    -- ^ dpi * conn
-    -> IO CInt
+  dpiConn_create ::
+    -- | const dpiContext *context
+    DPIContext ->
+    -- | const char *userName
+    CString ->
+    -- | uint32_t userNameLength
+    CUInt ->
+    -- | const char *password
+    CString ->
+    -- | uint32_t passwordLength
+    CUInt ->
+    -- | const char *connectString
+    CString ->
+    -- | uint32_t conn length
+    CUInt ->
+    -- | const dpiCommonCreateParams *commonParams
+    Ptr DPICommonCreateParams ->
+    -- | const dpiConnCreateParams *createParams
+    Ptr ConnectionCreateParams ->
+    -- | dpi * conn
+    Ptr DPIConn ->
+    IO CInt
 
 -- | typedef uint32_t dpiAuthMode;
 data DPIAuthMode
@@ -188,7 +240,8 @@ instance Storable DPIAuthMode where
   sizeOf _ = sizeOf (undefined :: CUInt)
   alignment _ = alignment (undefined :: CUInt)
   peek ptr = do
-    fromDPIAuthMode <$> peek (castPtr ptr) >>= \case
+    mbMode <- fromDPIAuthMode <$> peek (castPtr ptr)
+    case mbMode of
       Nothing -> fail "DPIAuthMode.peek: Invalid create mode"
       Just mode -> pure mode
   poke ptr mode =
@@ -205,7 +258,8 @@ instance Storable DPIPurity where
   sizeOf _ = sizeOf (undefined :: CUInt)
   alignment _ = alignment (undefined :: CUInt)
   peek ptr = do
-    fromDPIPurity <$> peek (castPtr ptr) >>= \case
+    mbMode <- fromDPIPurity <$> peek (castPtr ptr)
+    case mbMode of
       Nothing -> fail "DPIPurity.peek: Invalid create mode"
       Just mode -> pure mode
   poke ptr mode =
@@ -216,22 +270,9 @@ toDPIPurity = fromIntegral . fromEnum
 
 data DPIModeConnClose
   = DPI_MODE_CONN_CLOSE_DEFAULT -- 0x0000
-  | DPI_MODE_CONN_CLOSE_DROP    -- 0x0001
-  | DPI_MODE_CONN_CLOSE_RETAG   -- 0x0002
+  | DPI_MODE_CONN_CLOSE_DROP -- 0x0001
+  | DPI_MODE_CONN_CLOSE_RETAG -- 0x0002
   deriving (Show, Eq)
-
-toDpiModeConnClose :: DPIModeConnClose -> CUInt
-toDpiModeConnClose DPI_MODE_CONN_CLOSE_DEFAULT = 0x0000
-toDpiModeConnClose DPI_MODE_CONN_CLOSE_DROP = 0x0001
-toDpiModeConnClose DPI_MODE_CONN_CLOSE_RETAG = 0x0002
-
-foreign import ccall "dpiConn_close"
-  dpiConn_close
-    :: DPIConn
-    -> CUInt
-    -> CString
-    -> CUInt
-    -> IO CInt
 
 foreign import ccall "&finalize_connection_default"
   dpiConn_close_finalizer :: FunPtr (Ptr DPIConn -> IO ())
@@ -243,12 +284,6 @@ foreign import ccall "&dpiConn_release"
 close :: Connection -> IO ()
 close (Connection conn) = finalizeForeignPtr conn
 
-fromDPIModeConnClose :: CUInt -> Maybe DPIPurity
-fromDPIModeConnClose 0 = Just DPI_PURITY_DEFAULT
-fromDPIModeConnClose 1 = Just DPI_PURITY_NEW
-fromDPIModeConnClose 2 = Just DPI_PURITY_SELF
-fromDPIModeConnClose _ = Nothing
-
 fromDPIPurity :: CUInt -> Maybe DPIPurity
 fromDPIPurity 0 = Just DPI_PURITY_DEFAULT
 fromDPIPurity 1 = Just DPI_PURITY_NEW
@@ -256,10 +291,10 @@ fromDPIPurity 2 = Just DPI_PURITY_SELF
 fromDPIPurity _ = Nothing
 
 foreign import ccall "dpiContext_initPoolCreateParams"
-  dpiContext_initPoolCreateParams
-    :: DPIContext
-    -> Ptr DPIPoolCreateParams
-    -> IO Int
+  dpiContext_initPoolCreateParams ::
+    DPIContext ->
+    Ptr DPIPoolCreateParams ->
+    IO Int
 
 withDefaultPoolCreateParams :: (Ptr DPIPoolCreateParams -> IO a) -> IO a
 withDefaultPoolCreateParams f = do
@@ -376,7 +411,8 @@ instance Storable DPICreateMode where
   sizeOf _ = sizeOf (undefined :: CUInt)
   alignment _ = alignment (undefined :: CUInt)
   peek ptr = do
-    fromDPICreateMode <$> peek (castPtr ptr) >>= \case
+    mbMode <- fromDPICreateMode <$> peek (castPtr ptr)
+    case mbMode of
       Nothing -> fail "DPICreateMode.peek: Invalid create mode"
       Just mode -> pure mode
   poke ptr mode =
@@ -394,16 +430,16 @@ fromDPICreateMode 0x00000004 = Just DPI_MODE_CREATE_EVENTS
 fromDPICreateMode _ = Nothing
 
 foreign import ccall unsafe "context_create"
-  dpiContext_create
-    :: CInt
-    -- ^ major version
-    -> CInt
-    -- ^ minor version
-    -> Ptr DPIContext
-    -- ^ context return
-    -> Ptr ErrorInfo
-    -- ^ error info struct
-    -> IO Int
+  dpiContext_create ::
+    -- | major version
+    CInt ->
+    -- | minor version
+    CInt ->
+    -- | context return
+    Ptr DPIContext ->
+    -- | error info struct
+    Ptr ErrorInfo ->
+    IO Int
 
 globalContext :: IORef DPIContext
 {-# NOINLINE globalContext #-}
@@ -412,8 +448,8 @@ globalContext = unsafePerformIO (newIORef =<< createContext)
 foreign import ccall "getMajorVersion" getMajorVersion :: IO CInt
 foreign import ccall "getMinorVersion" getMinorVersion :: IO CInt
 
-createContext
-  :: IO DPIContext
+createContext ::
+  IO DPIContext
 createContext = do
   alloca $ \contextPtr -> do
     alloca $ \errorInfoPtr -> do
@@ -430,7 +466,7 @@ createContext = do
         else (throwIO <=< toOracleError <=< peek) errorInfoPtr
 
 renderErrorInfo :: ErrorInfo -> IO ()
-renderErrorInfo ErrorInfo{errorInfoCode, errorInfoMessage} = do
+renderErrorInfo ErrorInfo {errorInfoCode, errorInfoMessage} = do
   putStrLn $ "Error code: " <> show errorInfoCode
   unless (errorInfoMessage == nullPtr) $ do
     str <- peekCString errorInfoMessage
@@ -472,7 +508,7 @@ data OracleError = OracleError
   deriving (Show, Eq, Typeable)
 
 toOracleError :: ErrorInfo -> IO OracleError
-toOracleError ErrorInfo{..} = do
+toOracleError ErrorInfo {..} = do
   oracleErrorFnName <- peekCString errorInfoFnName
   oracleErrorAction <- peekCString errorInfoAction
   oracleErrorMessage <- peekCStringLen (errorInfoMessage, fromIntegral errorInfoMessageLength)
@@ -480,12 +516,12 @@ toOracleError ErrorInfo{..} = do
   let oracleErrorCode = fromIntegral errorInfoCode
   let oracleErrorIsRecoverable = intToBool $ fromIntegral errorInfoIsRecoverable
   let oracleErrorIsWarning = intToBool $ fromIntegral errorInfoIsWarning
-  pure OracleError{..}
- where
-  intToBool :: Int -> Bool
-  intToBool 0 = False
-  intToBool 1 = True
-  intToBool i = error $ "boolean encoded as integer not 0 or 1: " <> show i
+  pure OracleError {..}
+  where
+    intToBool :: Int -> Bool
+    intToBool 0 = False
+    intToBool 1 = True
+    intToBool i = error $ "boolean encoded as integer not 0 or 1: " <> show i
 
 throwOracleError :: CInt -> IO ()
 throwOracleError returnCode = do
@@ -505,8 +541,8 @@ data VersionInfo = VersionInfo
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
-getClientVersion
-  :: IO VersionInfo
+getClientVersion ::
+  IO VersionInfo
 getClientVersion = do
   ctx <- readIORef globalContext
   alloca $ \versionPtr -> do
@@ -516,23 +552,23 @@ getClientVersion = do
       else error ("getClientVersion: " <> show statusCode)
 
 foreign import ccall "dpiContext_getClientVersion"
-  dpiContext_getClientVersion
-    :: DPIContext
-    -> Ptr VersionInfo
-    -> IO Int
+  dpiContext_getClientVersion ::
+    DPIContext ->
+    Ptr VersionInfo ->
+    IO Int
 
 foreign import ccall "dpiConn_getServerVersion"
-  dpiContext_getServerVersion
-    :: Ptr DPIConn
-    -> Ptr CString
-    -> CInt
-    -> Ptr VersionInfo
-    -> IO Int
+  dpiContext_getServerVersion ::
+    Ptr DPIConn ->
+    Ptr CString ->
+    CInt ->
+    Ptr VersionInfo ->
+    IO Int
 
-getServerVersion
-  :: Connection
-  -> VersionInfo
-  -> IO String
+getServerVersion ::
+  Connection ->
+  VersionInfo ->
+  IO String
 getServerVersion (Connection fptr) versionInfo = do
   withForeignPtr fptr $ \conn ->
     alloca $ \releaseStringPtr -> do
@@ -548,32 +584,15 @@ getServerVersion (Connection fptr) versionInfo = do
           then (peekCString <=< peek) releaseStringPtr
           else error $ show status <> " oh no!"
 
-foreign import ccall "dpiContext_initCommonCreateParams"
-  dpiContext_initCommonCreateParams
-    :: DPIContext
-    -> Ptr DPICommonCreateParams
-    -> IO Int
-
-withCommonCreateParams
-  :: (DPICommonCreateParams -> IO a)
-  -> IO a
-withCommonCreateParams f = do
-  ctx <- readIORef globalContext
-  alloca $ \commonCreateParamsPtr -> do
-    status <- dpiContext_initCommonCreateParams ctx commonCreateParamsPtr
-    unless (status == 0) $ do
-      error $ "common create params isn't 0" <> show status
-    f =<< peek commonCreateParamsPtr
-
 foreign import ccall "dpiContext_initConnCreateParams"
-  dpiContext_initConnCreateParams
-    :: DPIContext
-    -> Ptr ConnectionCreateParams
-    -> IO Int
+  dpiContext_initConnCreateParams ::
+    DPIContext ->
+    Ptr ConnectionCreateParams ->
+    IO Int
 
-withConnCreateParams
-  :: (ConnectionCreateParams -> IO a)
-  -> IO a
+withConnCreateParams ::
+  (ConnectionCreateParams -> IO a) ->
+  IO a
 withConnCreateParams f = do
   ctx <- readIORef globalContext
   alloca $ \connCreateParamsPtr -> do
@@ -594,7 +613,7 @@ mkDPIBytesUTF8 :: String -> IO DPIBytes
 mkDPIBytesUTF8 str = do
   (dpiBytesPtr, fromIntegral -> dpiBytesLength) <- newCStringLen str
   dpiBytesEncoding <- newCString "UTF-8"
-  pure $ DPIBytes{..}
+  pure $ DPIBytes {..}
 
 data DPIIntervalDS = DPIIntervalDS
   { days :: CInt
@@ -627,59 +646,31 @@ data DPITimestamp = DPITimestamp
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
--- | Converts a DPITimestamp into the UTCTime zone by applying the offsets
--- to the year, month, day, hour, minutes and seconds
+{- | Converts a DPITimestamp into the UTCTime zone by applying the offsets
+to the year, month, day, hour, minutes and seconds
+-}
 dpiTimeStampToUTCDPITimeStamp :: DPITimestamp -> DPITimestamp
-dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp{..} = utcDpi
- where
-  offsetInMinutes, currentMinutes :: Int
-  offsetInMinutes = negate $ (fromIntegral tzHourOffset * 60) + fromIntegral tzMinuteOffset
-  currentMinutes = (fromIntegral hour * 60) + fromIntegral minute
-  (hours, minutes) = ((currentMinutes + offsetInMinutes) `mod` 1440) `quotRem` 60
+dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp {..} =
+  let offsetInMinutes, currentMinutes :: Int
+      offsetInMinutes = negate $ (fromIntegral tzHourOffset * 60) + fromIntegral tzMinuteOffset
+      currentMinutes = (fromIntegral hour * 60) + fromIntegral minute
 
-  gregorianDay = Time.fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
-  updatedDay
-    | fromIntegral currentMinutes + fromIntegral offsetInMinutes > 1440 =
-        Time.addDays 1 gregorianDay
-    | fromIntegral currentMinutes + fromIntegral offsetInMinutes < 0 =
-        Time.addDays (-1) gregorianDay
-    | otherwise = gregorianDay
-  (year', month', day') = Time.toGregorian updatedDay
-  utcDpi =
-    dpi
-      { tzHourOffset = 0
-      , tzMinuteOffset = 0
-      , year = fromIntegral year'
-      , month = fromIntegral month'
-      , day = fromIntegral day'
-      , hour = fromIntegral hours
-      , minute = fromIntegral minutes
-      }
-
-instance Arbitrary DPITimestamp where
-  arbitrary = do
-    year <- choose (1000, 2023)
-    month <- choose (1, 12)
-    day <- choose (1, 28)
-    hour <- choose (1, 23)
-    minute <- choose (1, 59)
-    second <- choose (1, 59)
-    fsecond <- choose (0, 100000)
-    tzHourOffset <- choose (-14, 14)
-    tzMinuteOffset <-
-      if signum tzHourOffset < 0
-        then choose (-59, 0)
-        else choose (0, 59)
-    pure DPITimestamp{..}
-
--- struct dpiAppContext {
---     const char *namespaceName;
---     uint32_t namespaceNameLength;
---     const char *name;
---     uint32_t nameLength;
---     const char *value;
---     uint32_t valueLength;
--- };
+      (hours, minutes) = ((currentMinutes + offsetInMinutes) `mod` 1440) `quotRem` 60
+      gregorianDay = Time.fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
+      updatedDay
+        | currentMinutes + offsetInMinutes > 1440 = Time.addDays 1 gregorianDay
+        | currentMinutes + offsetInMinutes < 0 = Time.addDays (-1) gregorianDay
+        | otherwise = gregorianDay
+      (year', month', day') = Time.toGregorian updatedDay
+   in dpi
+        { tzHourOffset = 0
+        , tzMinuteOffset = 0
+        , year = fromIntegral year'
+        , month = fromIntegral month'
+        , day = fromIntegral day'
+        , hour = fromIntegral hours
+        , minute = fromIntegral minutes
+        }
 
 data DPIAppContext = DPIAppContext
   { namespaceName :: CString
@@ -713,21 +704,21 @@ getErrorInfo = do
     peek errorInfoPtr
 
 foreign import ccall "dpiConn_prepareStmt"
-  dpiConn_prepareStmt
-    :: Ptr DPIConn
-    -> CInt
-    -> CString
-    -> CUInt
-    -> CString
-    -> CUInt
-    -> Ptr DPIStmt
-    -> IO CInt
+  dpiConn_prepareStmt ::
+    Ptr DPIConn ->
+    CInt ->
+    CString ->
+    CUInt ->
+    CString ->
+    CUInt ->
+    Ptr DPIStmt ->
+    IO CInt
 
-prepareStmt
-  :: Connection
-  -> String
-  -- ^ sql
-  -> IO DPIStmt
+prepareStmt ::
+  Connection ->
+  -- | sql
+  String ->
+  IO DPIStmt
 prepareStmt (Connection fptr) sql = do
   withForeignPtr fptr $ \conn -> do
     alloca $ \stmtPtr -> do
@@ -753,47 +744,38 @@ toDPIModeExec DPI_MODE_EXEC_BATCH_ERRORS = 0x00000080
 toDPIModeExec DPI_MODE_EXEC_PARSE_ONLY = 0x00000100
 toDPIModeExec DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS = 0x00100000
 
-fromDPIModeExec :: CUInt -> Maybe DPIModeExec
-fromDPIModeExec 0x00000000 = Just DPI_MODE_EXEC_DEFAULT
-fromDPIModeExec 0x00000010 = Just DPI_MODE_EXEC_DESCRIBE_ONLY
-fromDPIModeExec 0x00000020 = Just DPI_MODE_EXEC_COMMIT_ON_SUCCESS
-fromDPIModeExec 0x00000080 = Just DPI_MODE_EXEC_BATCH_ERRORS
-fromDPIModeExec 0x00000100 = Just DPI_MODE_EXEC_PARSE_ONLY
-fromDPIModeExec 0x00100000 = Just DPI_MODE_EXEC_ARRAY_DML_ROWCOUNTS
-fromDPIModeExec _ = Nothing
-
 foreign import ccall "dpiStmt_execute"
-  dpiStmt_execute
-    :: DPIStmt
-    -> CUInt
-    -> Ptr CUInt
-    -> IO CInt
+  dpiStmt_execute ::
+    DPIStmt ->
+    CUInt ->
+    Ptr CUInt ->
+    IO CInt
 
 -- | Execute a statement.
-dpiExecute
-  :: DPIStmt
-  -- ^ Statement to be executed
-  -> DPIModeExec
-  -- ^ Execution mode
-  -> IO CUInt
-  -- ^ query columns
+dpiExecute ::
+  -- | Statement to be executed
+  DPIStmt ->
+  -- | Execution mode
+  DPIModeExec ->
+  -- | query columns
+  IO CUInt
 dpiExecute stmt mode =
   alloca $ \rowsPtr -> do
     throwOracleError =<< dpiStmt_execute stmt (toDPIModeExec mode) rowsPtr
     peek rowsPtr
 
 foreign import ccall "dpiStmt_fetch"
-  dpiStmt_fetch
-    :: DPIStmt
-    -> Ptr CInt
-    -> Ptr CUInt
-    -> IO CInt
+  dpiStmt_fetch ::
+    DPIStmt ->
+    Ptr CInt ->
+    Ptr CUInt ->
+    IO CInt
 
 -- | Fetch a single row from the buffers defined for the query.
-fetch
-  :: DPIStmt
-  -- ^ Statement from which row is to be fetched
-  -> IO CInt
+fetch ::
+  -- | Statement from which row is to be fetched
+  DPIStmt ->
+  IO CInt
 fetch stmt =
   alloca $ \bufferRowIdxPtr ->
     alloca $ \foundPtr -> do
@@ -801,30 +783,31 @@ fetch stmt =
       peek foundPtr
 
 foreign import ccall "dpiStmt_getQueryValue"
-  dpiStmt_getQueryValue
-    :: DPIStmt
-    -> CUInt
-    -> Ptr CUInt
-    -> Ptr (Ptr (DPIData ReadBuffer))
-    -> IO CInt
+  dpiStmt_getQueryValue ::
+    DPIStmt ->
+    CUInt ->
+    Ptr CUInt ->
+    Ptr (Ptr (DPIData ReadBuffer)) ->
+    IO CInt
 
 -- | Return the value of the column at the given position for the currently fetched row.
-getQueryValue
-  :: DPIStmt
-  -- ^ Statement from which column value is to be retrieved
-  -> CUInt
-  -- ^ Column position
-  -> IO (DPINativeType, Ptr (DPIData ReadBuffer))
+getQueryValue ::
+  -- | Statement from which column value is to be retrieved
+  DPIStmt ->
+  -- | Column position
+  CUInt ->
+  IO (DPINativeType, Ptr (DPIData ReadBuffer))
 getQueryValue stmt pos = do
   alloca $ \(buffer :: Ptr (Ptr (DPIData ReadBuffer))) -> do
-    alloca $ \(typ :: Ptr CUInt) -> do
-      throwOracleError =<< dpiStmt_getQueryValue stmt pos typ buffer
-      (uintToDPINativeType <$> peek typ) >>= \case
+    alloca $ \(typPtr :: Ptr CUInt) -> do
+      throwOracleError =<< dpiStmt_getQueryValue stmt pos typPtr buffer
+      mbNativeType <- uintToDPINativeType <$> peek typPtr
+      case mbNativeType of
         Nothing ->
           error "getQueryValue: Invalid type returned"
-        Just typ -> do
+        Just nativeType -> do
           dataBuffer <- peek buffer
-          pure (typ, dataBuffer)
+          pure (nativeType, dataBuffer)
 
 data DPINativeType
   = DPI_NATIVE_TYPE_INT64
@@ -895,9 +878,10 @@ uintToDPINativeType 3015 = Just DPI_NATIVE_TYPE_JSON_ARRAY
 uintToDPINativeType 3016 = Just DPI_NATIVE_TYPE_NULL
 uintToDPINativeType _ = Nothing
 
--- | Oracle data types.
--- Includes types used for columns in tables as well as types exclusive to PL/SQL.
--- Each type maps to a DPI native type to read/write values via ODPI functions.
+{- | Oracle data types.
+Includes types used for columns in tables as well as types exclusive to PL/SQL.
+Each type maps to a DPI native type to read/write values via ODPI functions.
+-}
 data DPIOracleType
   = DPI_ORACLE_TYPE_NONE
   | DPI_ORACLE_TYPE_VARCHAR
@@ -1014,13 +998,6 @@ uintToDPIOracleType 2031 = Just DPI_ORACLE_TYPE_LONG_NVARCHAR
 uintToDPIOracleType 2032 = Just DPI_ORACLE_TYPE_MAX
 uintToDPIOracleType _ = Nothing
 
-foreign import ccall "dpiStmt_release" dpiStmt_release :: DPIStmt -> IO CInt
-
-stmtRelease
-  :: DPIStmt
-  -> IO ()
-stmtRelease = throwOracleError <=< dpiStmt_release
-
 -- | Used to write values to or read values from a column.
 data DPIData a = DPIData
   { dataIsNull :: CInt
@@ -1031,15 +1008,17 @@ data DPIData a = DPIData
   deriving stock (Generic, Show, Eq)
   deriving anyclass (GStorable)
 
--- | An opaque pointer type for the @dpiDataBuffer@ union that we read from.
--- We cannot write to this in a way that ODPIC could use.
--- For poking purposes, use 'WriteBuffer'.
+{- | An opaque pointer type for the @dpiDataBuffer@ union that we read from.
+We cannot write to this in a way that ODPIC could use.
+For poking purposes, use 'WriteBuffer'.
+-}
 newtype ReadBuffer = ReadBuffer (Ptr ReadBuffer)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
--- | @dpiDataBuffer@ union that we can write to.
--- We cannot read from this without a hint as to what type of data it contains.
+{- | @dpiDataBuffer@ union that we can write to.
+We cannot read from this without a hint as to what type of data it contains.
+-}
 data WriteBuffer
   = AsInt64 Int64
   | AsUInt64 Word64
@@ -1067,11 +1046,12 @@ instance Storable WriteBuffer where
   poke ptr (AsBoolean cbool) = poke (castPtr ptr) cbool
   poke ptr AsNull = poke (castPtr ptr) nullPtr
 
--- | Free all pointers in the WriteBuffer.
--- Call only after the contents of the buffer (specifically, any pointers) are no longer needed.
+{- | Free all pointers in the WriteBuffer.
+Call only after the contents of the buffer (specifically, any pointers) are no longer needed.
+-}
 freeWriteBuffer :: WriteBuffer -> IO ()
 freeWriteBuffer (AsString cString) = free cString
-freeWriteBuffer (AsBytes DPIBytes{..}) = free dpiBytesPtr >> free dpiBytesEncoding
+freeWriteBuffer (AsBytes DPIBytes {..}) = free dpiBytesPtr >> free dpiBytesEncoding
 freeWriteBuffer _ = pure ()
 
 foreign import ccall "dpiData_getDouble"
@@ -1099,19 +1079,19 @@ foreign import ccall "dpiData_getIsNull"
   dpiData_getIsNull :: Ptr (DPIData ReadBuffer) -> IO Int
 
 foreign import ccall "dpiStmt_bindValueByPos"
-  dpiStmt_bindValueByPos
-    :: DPIStmt
-    -- ^ dpiStmt *stmt
-    -> CUInt
-    -- ^ uint32_t pos
-    -> CUInt
-    -- ^ dpiNativeTypeNum nativeTypeNum
-    -> Ptr (DPIData WriteBuffer)
-    -- ^ dpiData *data
-    -> IO CInt
-    -- ^ int
+  dpiStmt_bindValueByPos ::
+    -- | dpiStmt *stmt
+    DPIStmt ->
+    -- | uint32_t pos
+    CUInt ->
+    -- | dpiNativeTypeNum nativeTypeNum
+    CUInt ->
+    -- | dpiData *data
+    Ptr (DPIData WriteBuffer) ->
+    -- | int
+    IO CInt
 
-bindValueByPos :: DPIStmt -> Column -> DPINativeType -> (DPIData WriteBuffer) -> IO ()
+bindValueByPos :: DPIStmt -> Column -> DPINativeType -> DPIData WriteBuffer -> IO ()
 bindValueByPos stmt col nativeType val = do
   alloca $ \dpiData' -> do
     poke dpiData' val
@@ -1120,10 +1100,10 @@ bindValueByPos stmt col nativeType val = do
     pure ()
 
 foreign import ccall "dpiStmt_getRowCount"
-  dpiStmt_getRowCount
-    :: DPIStmt
-    -> Ptr Word64
-    -> IO CInt
+  dpiStmt_getRowCount ::
+    DPIStmt ->
+    Ptr Word64 ->
+    IO CInt
 
 getRowCount :: DPIStmt -> IO Word64
 getRowCount stmt = do
@@ -1136,9 +1116,9 @@ newtype Column = Column {getColumn :: Word32}
   deriving newtype (Num, Show)
 
 foreign import ccall "dpiConn_ping"
-  dpiConn_ping
-    :: Ptr DPIConn
-    -> IO CInt
+  dpiConn_ping ::
+    Ptr DPIConn ->
+    IO CInt
 
 -- | Ping the connection to see if it is still alive
 ping :: Connection -> IO Bool
@@ -1147,10 +1127,10 @@ ping (Connection fptr) =
 
 -- | DPI_EXPORT int dpiConn_getIsHealthy(dpiConn *conn, int *isHealthy);
 foreign import ccall unsafe "dpiConn_getIsHealthy"
-  dpiConn_getIsHealthy
-    :: Ptr DPIConn
-    -> Ptr CInt
-    -> IO CInt
+  dpiConn_getIsHealthy ::
+    Ptr DPIConn ->
+    Ptr CInt ->
+    IO CInt
 
 -- | A pointer to an integer defining whether the connection is healthy (1) or not (0), which will be populated upon successful completion of this function.
 isHealthy :: Connection -> IO Bool
@@ -1160,8 +1140,9 @@ isHealthy (Connection fptr) =
       throwOracleError =<< dpiConn_getIsHealthy conn healthPtr
       (== 1) <$> peek healthPtr
 
--- | The 1-tuple type or single-value "collection".
--- Structurally equivalent to 'Data.Functor.Identity.Identity'.
+{- | The 1-tuple type or single-value "collection".
+Structurally equivalent to 'Data.Functor.Identity.Identity'.
+-}
 newtype Only a = Only {fromOnly :: a}
   deriving stock (Eq, Ord, Read, Show, Generic)
-  deriving newtype Enum
+  deriving newtype (Enum)

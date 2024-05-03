@@ -9,14 +9,17 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Database.Oracle.Simple.ToRow where
+module Database.Oracle.Simple.ToRow
+  ( RowWriter (..),
+    ToRow (..),
+  )
+where
 
 import Control.Monad (void)
 import Control.Monad.IO.Class (liftIO)
 import Control.Monad.State.Strict (StateT, get, modify)
 import Data.Functor.Identity (Identity)
-import qualified Data.List as L
-import Data.Proxy (Proxy(..))
+import Data.Proxy (Proxy (..))
 import GHC.Generics
 import GHC.TypeLits
 
@@ -62,16 +65,16 @@ instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f) => T
 instance (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g) => ToRow (a, b, c, d, e, f, g)
 
 instance
-  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h)
-  => ToRow (a, b, c, d, e, f, g, h)
+  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h) =>
+  ToRow (a, b, c, d, e, f, g, h)
 
 instance
-  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i)
-  => ToRow (a, b, c, d, e, f, g, h, i)
+  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i) =>
+  ToRow (a, b, c, d, e, f, g, h, i)
 
 instance
-  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i, ToField j)
-  => ToRow (a, b, c, d, e, f, g, h, i, j)
+  (ToField a, ToField b, ToField c, ToField d, ToField e, ToField f, ToField g, ToField h, ToField i, ToField j) =>
+  ToRow (a, b, c, d, e, f, g, h, i, j)
 
 class GToRow f where
   gToRow :: f a -> RowWriter ()
@@ -102,5 +105,5 @@ writeField field = RowWriter $ \stmt -> do
     let dataIsNull = case dataValue of
           AsNull -> 1
           _ -> 0
-    bindValueByPos stmt col (toDPINativeType (Proxy @a)) (DPIData{..})
+    bindValueByPos stmt col (toDPINativeType (Proxy @a)) (DPIData {..})
     freeWriteBuffer dataValue -- no longer needed as dpiStmt_bindValueByPos creates a memory-managed dpiVar

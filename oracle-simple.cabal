@@ -25,59 +25,73 @@ flag apt_paths
   description:
     use paths for odpic as set by libodpic4 and odpic-dev from apt
 
+library
+  exposed-modules:
+      Database.Oracle.Simple
+  other-modules:
+      Database.Oracle.Simple.Execute
+      Database.Oracle.Simple.FromField
+      Database.Oracle.Simple.FromRow
+      Database.Oracle.Simple.Internal
+      Database.Oracle.Simple.JSON
+      Database.Oracle.Simple.Pool
+      Database.Oracle.Simple.Query
+      Database.Oracle.Simple.ToField
+      Database.Oracle.Simple.ToRow
+      Database.Oracle.Simple.Transaction
+  hs-source-dirs:
+      src
+  c-sources:
+      cbits/dpiDataBuffer.c
+      cbits/oracleHelpers.c
+  extra-libraries:
+      odpic
+  build-depends:
+      aeson
+    , base
+    , bytestring
+    , derive-storable
+    , mtl
+    , random
+    , scientific
+    , text
+    , time
+    , uuid
+    , vector
+  default-language: Haskell2010
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wincomplete-record-updates -Wmissing-export-lists -Wno-implicit-prelude -Wno-safe -Wno-unsafe -Wnoncanonical-monad-instances -Wredundant-constraints -Wpartial-fields -Wmissed-specialisations -Wunused-packages -O2 -haddock
+  if os(linux) && flag(default_paths)
+    include-dirs:
+        /usr/local/include
+    extra-lib-dirs:
+        /usr/local/lib
+  if os(linux) && flag(apt_paths)
+    include-dirs:
+        /usr/include
+    extra-lib-dirs:
+        /usr/lib/x86_64-linux-gnu
+  if os(osx) && flag(default_paths)
+    include-dirs:
+        /usr/local/include
+    extra-lib-dirs:
+        /usr/local/lib
+
 executable tests
   main-is:
     Main.hs
-  build-depends:
-    base < 5, oracle-simple, text, time, hspec, QuickCheck, quickcheck-instances, aeson
   hs-source-dirs:
     test
   default-language:
     Haskell2010
-
-library
-  exposed-modules:
-    Database.Oracle.Simple
-  other-modules:
-      Database.Oracle.Simple.Internal
-    , Database.Oracle.Simple.Execute
-    , Database.Oracle.Simple.FromField
-    , Database.Oracle.Simple.FromRow
-    , Database.Oracle.Simple.JSON
-    , Database.Oracle.Simple.Pool
-    , Database.Oracle.Simple.Query
-    , Database.Oracle.Simple.ToField
-    , Database.Oracle.Simple.ToRow
-    , Database.Oracle.Simple.Transaction
+  ghc-options: -Wall -Werror -Wcompat -Widentities -Wincomplete-uni-patterns -Wincomplete-record-updates -Wmissing-export-lists -Wno-implicit-prelude -Wno-safe -Wno-unsafe -Wnoncanonical-monad-instances -Wredundant-constraints -Wpartial-fields -Wmissed-specialisations -Wunused-packages -O2 -threaded -rtsopts -with-rtsopts=-N
   build-depends:
-    base < 5, bytestring, derive-storable, text, mtl, time, QuickCheck, aeson, scientific, vector, uuid, random
-  hs-source-dirs:
-    src
-  extra-libraries:
-    odpic
-  if os(linux)
-    if flag(default_paths)
-      include-dirs:
-        /usr/local/include
-      extra-lib-dirs:
-        /usr/local/lib
-    if flag(apt_paths)
-      include-dirs:
-        /usr/include
-      extra-lib-dirs:
-        /usr/lib/x86_64-linux-gnu
-  if flag(default_paths) && os(osx)
-    includes:
-      /usr/local/include/dpi.h
-    include-dirs:
-      /usr/local/include
-    extra-lib-dirs:
-      /usr/local/lib
-  c-sources:
-    cbits/dpiDataBuffer.c
-    cbits/oracleHelpers.c
-  default-language:
-    Haskell2010
+      aeson
+    , base
+    , hedgehog
+    , hspec
+    , hspec-hedgehog
+    , oracle-simple
+    , time
 
 source-repository head
   type: git

@@ -3,18 +3,23 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 
-module Database.Oracle.Simple.FromField where
+module Database.Oracle.Simple.FromField
+  ( FieldParser (..),
+    FromField (..),
+    ReadDPIBuffer,
+    dpiTimeStampToUTCTime,
+  )
+where
 
-import Control.Exception (Exception, SomeException, catch, evaluate, displayException, throwIO)
+import Control.Exception (Exception, SomeException, catch, displayException, evaluate, throwIO)
 import Control.Monad ((<=<))
 import qualified Data.ByteString as BS
 import Data.Coerce (coerce)
-import Data.Fixed (Fixed(..), Pico)
+import Data.Fixed (Fixed (..), Pico)
 import Data.Int (Int64)
-import Data.Proxy (Proxy(..))
-import Data.Text (Text)
+import Data.Proxy (Proxy (..))
 import qualified Data.Text as T
-import qualified Data.Text.Encoding as T
+import qualified Data.Text.Encoding as TE
 import qualified Data.Time as Time
 import Data.Word (Word64)
 import Foreign.C.String (peekCString)
@@ -27,11 +32,12 @@ import Database.Oracle.Simple.Internal
 class FromField a where
   fromDPINativeType :: Proxy a -> DPINativeType
   -- ^ The DPI native type for the value in the data buffer.
+
   fromField :: FieldParser a
   -- ^ Retrieve a value of type @a@ from the data buffer.
 
 instance Functor FieldParser where
-  fmap f FieldParser{..} = FieldParser (fmap f <$> readDPIDataBuffer)
+  fmap f FieldParser {..} = FieldParser (fmap f <$> readDPIDataBuffer)
 
 instance FromField Double where
   fromDPINativeType _ = DPI_NATIVE_TYPE_DOUBLE
@@ -45,7 +51,7 @@ instance FromField DPITimestamp where
   fromDPINativeType _ = DPI_NATIVE_TYPE_TIMESTAMP
   fromField = FieldParser getTimestamp
 
-instance FromField Text where
+instance FromField T.Text where
   fromDPINativeType _ = DPI_NATIVE_TYPE_BYTES
   fromField = FieldParser getText
 
@@ -83,7 +89,7 @@ instance FromField Time.UTCTime where
 
 dpiTimeStampToUTCTime :: DPITimestamp -> Time.UTCTime
 dpiTimeStampToUTCTime dpi =
-  let DPITimestamp{..} = dpiTimeStampToUTCDPITimeStamp dpi
+  let DPITimestamp {..} = dpiTimeStampToUTCDPITimeStamp dpi
       local = Time.LocalTime d tod
       d = Time.fromGregorian (fromIntegral year) (fromIntegral month) (fromIntegral day)
       tod = Time.TimeOfDay (fromIntegral hour) (fromIntegral minute) (fromIntegral second + picos)
@@ -97,7 +103,7 @@ newtype FieldParser a = FieldParser
   }
 
 instance Applicative FieldParser where
-  pure x = FieldParser $ \ptr -> pure x
+  pure x = FieldParser $ \_ -> pure x
   FieldParser f <*> FieldParser g = FieldParser $ \ptr -> do
     f' <- f ptr
     x <- g ptr
@@ -133,24 +139,25 @@ getWord64 = dpiData_getUint64
 getBool :: ReadDPIBuffer Bool
 getBool ptr = (== 1) <$> dpiData_getBool ptr
 
--- | Get Text from the data buffer.
--- Supports ASCII, UTF-8 and UTF-16 big- and little-endian encodings.
--- Throws 'FieldParseError' if any other encoding is encountered.
-getText :: ReadDPIBuffer Text
+{- | Get Text from the data buffer.
+Supports ASCII, UTF-8 and UTF-16 big- and little-endian encodings.
+Throws 'FieldParseError' if any other encoding is encountered.
+-}
+getText :: ReadDPIBuffer T.Text
 getText = buildText <=< peek <=< dpiData_getBytes
- where
-  buildText DPIBytes{..} = do
-    gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
-    encoding <- peekCString dpiBytesEncoding
-    decodeFn <- case encoding of
-      "ASCII" -> pure T.decodeASCII
-      "UTF-8" -> pure T.decodeUtf8
-      "UTF-16BE" -> pure T.decodeUtf16BE
-      "UTF-16LE" -> pure T.decodeUtf16LE
-      otherEnc -> throwIO $ UnsupportedEncoding otherEnc
-    evaluate (decodeFn gotBytes)
-      `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
-              )
+  where
+    buildText DPIBytes {..} = do
+      gotBytes <- BS.packCStringLen (dpiBytesPtr, fromIntegral dpiBytesLength)
+      encoding <- peekCString dpiBytesEncoding
+      decodeFn <- case encoding of
+        "ASCII" -> pure TE.decodeASCII
+        "UTF-8" -> pure TE.decodeUtf8
+        "UTF-16BE" -> pure TE.decodeUtf16BE
+        "UTF-16LE" -> pure TE.decodeUtf16LE
+        otherEnc -> throwIO $ UnsupportedEncoding otherEnc
+      evaluate (decodeFn gotBytes)
+        `catch` ( \(e :: SomeException) -> throwIO (ByteDecodeError encoding (displayException e))
+                )
 
 -- | Get Text from the data buffer
 getString :: ReadDPIBuffer String
@@ -163,15 +170,15 @@ getTimestamp = peek <=< dpiData_getTimestamp
 -- | Errors encountered when parsing a database field.
 data FieldParseError
   = -- | We encountered an encoding other than ASCII, UTF-8 or UTF-16
-    UnsupportedEncoding {fpeOtherEncoding :: String}
+    UnsupportedEncoding String
   | -- | Failed to decode bytes using stated encoding
-    ByteDecodeError {fpeEncoding :: String, fpeErrorMsg :: String}
+    ByteDecodeError String String
   deriving (Show)
 
 instance Exception FieldParseError where
-  displayException UnsupportedEncoding{..} =
+  displayException (UnsupportedEncoding fpeOtherEncoding) =
     "Field Parse Error: Encountered unsupported text encoding '"
       <> fpeOtherEncoding
       <> "'. Supported encodings: ASCII, UTF-8, UTF-16BE, UTF-16LE."
-  displayException ByteDecodeError{..} =
+  displayException (ByteDecodeError fpeEncoding fpeErrorMsg) =
     "Field Parse Error: Failed to decode bytes as " <> fpeEncoding <> ": " <> fpeErrorMsg
