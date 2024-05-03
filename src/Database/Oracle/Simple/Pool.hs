@@ -1,47 +1,47 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Database.Oracle.Simple.Pool
-  ( Pool
-  , createPool
-  , acquireConnection
-  , withPool
-  , withPoolConnection
-  , closePool
+  ( Pool,
+    createPool,
+    acquireConnection,
+    withPool,
+    withPoolConnection,
+    closePool,
   )
 where
 
 import Control.Exception (bracket)
 import Data.IORef (readIORef)
 import Foreign
-  ( ForeignPtr
-  , FunPtr
-  , Ptr
-  , addForeignPtrFinalizer
-  , alloca
-  , finalizeForeignPtr
-  , newForeignPtr_
-  , nullPtr
-  , peek
-  , withForeignPtr
+  ( ForeignPtr,
+    FunPtr,
+    Ptr,
+    addForeignPtrFinalizer,
+    alloca,
+    finalizeForeignPtr,
+    newForeignPtr_,
+    nullPtr,
+    peek,
+    withForeignPtr,
   )
 import Foreign.C (CInt (CInt), CString, CUInt (CUInt), withCStringLen)
 import Foreign.Storable (poke)
 
 import Database.Oracle.Simple.Internal
-  ( Connection (Connection)
-  , ConnectionParams (connString, pass, user, additionalParams)
-  , DPICommonCreateParams
-  , DPIConn (DPIConn)
-  , DPIContext (DPIContext)
-  , DPIPool (DPIPool)
-  , AdditionalConnectionParams (..)
-  , DPIPoolCreateParams (..)
-  , close
-  , dpiConn_close_finalizer
-  , dpiConn_release_finalizer
-  , globalContext
-  , throwOracleError
-  , withDefaultPoolCreateParams
+  ( AdditionalConnectionParams (..),
+    Connection (Connection),
+    ConnectionParams (additionalParams, connString, pass, user),
+    DPICommonCreateParams,
+    DPIConn (DPIConn),
+    DPIContext (DPIContext),
+    DPIPool (DPIPool),
+    DPIPoolCreateParams (..),
+    close,
+    dpiConn_close_finalizer,
+    dpiConn_release_finalizer,
+    globalContext,
+    throwOracleError,
+    withDefaultPoolCreateParams,
   )
 
 -- | A session pool; a group of stateless connections ("sessions") to the database.
@@ -49,18 +49,17 @@ newtype Pool = Pool (ForeignPtr DPIPool)
   deriving (Show, Eq)
 
 -- | Creates and maintains a group of stateless connections to the database.
-createPool
-  :: ConnectionParams
-  -> IO Pool
+createPool ::
+  ConnectionParams ->
+  IO Pool
 createPool params = do
   ctx <- readIORef globalContext
   DPIPool poolPtr <- alloca $ \connPtr -> do
     withCStringLen (user params) $ \(userCString, fromIntegral -> userLen) ->
       withCStringLen (pass params) $ \(passCString, fromIntegral -> passLen) ->
         withCStringLen (connString params) $ \(connCString, fromIntegral -> connLen) -> do
-          let
-            poolCreate paramsPtr =
-              dpiPool_create ctx userCString userLen passCString passLen connCString connLen nullPtr paramsPtr connPtr
+          let poolCreate paramsPtr =
+                dpiPool_create ctx userCString userLen passCString passLen connCString connLen nullPtr paramsPtr connPtr
           status <-
             case additionalParams params of
               Nothing -> poolCreate nullPtr
@@ -94,28 +93,28 @@ createPool params = do
   pure (Pool fptr)
 
 foreign import ccall unsafe "dpiPool_create"
-  dpiPool_create
-    :: DPIContext
-    -- ^ const dpiContext *context
-    -> CString
-    -- ^ const char *userName
-    -> CUInt
-    -- ^ uint32_t userNameLength
-    -> CString
-    -- ^ const char *password
-    -> CUInt
-    -- ^ uint32_t passwordLength
-    -> CString
-    -- ^ const char *connectString
-    -> CUInt
-    -- ^ uint32_t connLength
-    -> Ptr DPICommonCreateParams
-    -- ^ const dpiCommonCreateParams *commonParams
-    -> Ptr DPIPoolCreateParams
-    -- ^ const dpiPoolCreateParams *createParams
-    -> Ptr DPIPool
-    -- ^ dpiPool **pool
-    -> IO CInt
+  dpiPool_create ::
+    -- | const dpiContext *context
+    DPIContext ->
+    -- | const char *userName
+    CString ->
+    -- | uint32_t userNameLength
+    CUInt ->
+    -- | const char *password
+    CString ->
+    -- | uint32_t passwordLength
+    CUInt ->
+    -- | const char *connectString
+    CString ->
+    -- | uint32_t connLength
+    CUInt ->
+    -- | const dpiCommonCreateParams *commonParams
+    Ptr DPICommonCreateParams ->
+    -- | const dpiPoolCreateParams *createParams
+    Ptr DPIPoolCreateParams ->
+    -- | dpiPool **pool
+    Ptr DPIPool ->
+    IO CInt
 
 foreign import ccall "&close_pool_default"
   dpiPool_close_finalizer :: FunPtr (Ptr DPIPool -> IO ())
@@ -144,12 +143,12 @@ acquireConnection (Pool poolFptr) = do
   pure (Connection fptr)
 
 foreign import ccall unsafe "acquire_connection"
-  acquire_connection
-    :: Ptr DPIPool
-    -- ^ dpiPool *pool
-    -> Ptr DPIConn
-    -- ^ dpiConn **conn
-    -> IO CInt
+  acquire_connection ::
+    -- | dpiPool *pool
+    Ptr DPIPool ->
+    -- | dpiConn **conn
+    Ptr DPIConn ->
+    IO CInt
 
 -- | Bracket a computation between acquiring a connection from a session pool and releasing the connection.
 withPoolConnection :: Pool -> (Connection -> IO c) -> IO c

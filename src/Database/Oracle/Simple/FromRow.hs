@@ -7,14 +7,18 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE TypeOperators #-}
 
-module Database.Oracle.Simple.FromRow where
+module Database.Oracle.Simple.FromRow
+  ( FromRow (..),
+    getRow,
+  )
+where
 
 import Control.Exception hiding (TypeError)
 import Control.Monad (unless)
 import Control.Monad.IO.Class (liftIO)
-import Control.Monad.State.Strict (StateT, evalStateT, modify, get)
+import Control.Monad.State.Strict (StateT, evalStateT, get, modify)
 import Data.Functor.Identity (Identity)
-import Data.Proxy (Proxy(..))
+import Data.Proxy (Proxy (..))
 import Data.Word (Word32)
 import GHC.Generics
 import GHC.TypeLits
@@ -42,16 +46,16 @@ instance (FromField a, FromField b, FromField c, FromField d, FromField e) => Fr
 instance (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f) => FromRow (a, b, c, d, e, f)
 
 instance
-  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g)
-  => FromRow (a, b, c, d, e, f, g)
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g) =>
+  FromRow (a, b, c, d, e, f, g)
 
 instance
-  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h)
-  => FromRow (a, b, c, d, e, f, g, h)
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h) =>
+  FromRow (a, b, c, d, e, f, g, h)
 
 instance
-  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h, FromField i)
-  => FromRow (a, b, c, d, e, f, g, h, i)
+  (FromField a, FromField b, FromField c, FromField d, FromField e, FromField f, FromField g, FromField h, FromField i) =>
+  FromRow (a, b, c, d, e, f, g, h, i)
 
 instance
   ( FromField a
@@ -64,8 +68,8 @@ instance
   , FromField h
   , FromField i
   , FromField j
-  )
-  => FromRow (a, b, c, d, e, f, g, h, i, j)
+  ) =>
+  FromRow (a, b, c, d, e, f, g, h, i, j)
 
 class GFromRow f where
   gFromRow :: RowParser (f a)
@@ -113,10 +117,11 @@ getRow stmt = evalStateT (runRowParser fromRow stmt) 0
 readField :: (FromField a) => RowParser a
 readField = fieldWith fromField
 
--- | Derive a 'RowParser' for a field at the specified column position
--- using the supplied 'FieldParser'.
+{- | Derive a 'RowParser' for a field at the specified column position
+using the supplied 'FieldParser'.
+-}
 fieldWith :: forall a. (FromField a) => FieldParser a -> RowParser a
-fieldWith FieldParser{..} = RowParser $ \dpiStmt -> do
+fieldWith FieldParser {..} = RowParser $ \dpiStmt -> do
   pos <- modify (+ 1) >> get
   liftIO $ do
     (gotType, dataBuf) <- getQueryValue dpiStmt (fromIntegral pos)
@@ -139,7 +144,7 @@ data RowParseError
   deriving (Show)
 
 instance Exception RowParseError where
-  displayException (TypeMismatch{..}) =
+  displayException (TypeMismatch {..}) =
     "Row parse error due to type mismatch: At column "
       <> show column
       <> ", expected "
