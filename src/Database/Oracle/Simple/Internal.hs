@@ -33,6 +33,7 @@ module Database.Oracle.Simple.Internal
     ConnectionParams (..),
     OracleError (..),
     ErrorInfo (..),
+    VersionInfo (..),
     renderErrorInfo,
     ping,
     fetch,

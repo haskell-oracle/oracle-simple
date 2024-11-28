@@ -5,7 +5,9 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Database.Oracle.Simple.Transaction
-  ( beginTransaction,
+  ( 
+    DPIXid (..),
+    beginTransaction,
     commitTransaction,
     prepareCommit,
     withTransaction,
@@ -138,7 +140,7 @@ data DPIXid = DPIXid
   , dpixBranchQualifier :: CString
   , dpixBranchQualifierLength :: CUInt
   }
-  deriving (Show)
+  deriving (Show, Eq)
 
 instance Storable DPIXid where
     sizeOf _ =
