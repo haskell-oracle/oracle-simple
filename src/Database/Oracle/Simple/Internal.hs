@@ -33,6 +33,7 @@ module Database.Oracle.Simple.Internal
     ConnectionParams (..),
     OracleError (..),
     ErrorInfo (..),
+    VersionInfo (..),
     renderErrorInfo,
     ping,
     fetch,
@@ -538,8 +539,28 @@ data VersionInfo = VersionInfo
   , portUpdateNum :: CInt
   , fullVersionNum :: CUInt
   }
-  deriving (Show, Eq, Generic)
-  deriving anyclass (GStorable)
+  deriving (Show, Eq)
+
+instance Storable VersionInfo where
+    sizeOf _ = sizeOf (undefined :: CInt) * 6
+    alignment _ = alignment (undefined :: CInt)
+    peek p = do
+        let basePtr = castPtr p
+        versionNum <- peekByteOff basePtr 0
+        releaseNum <- peekByteOff basePtr 4
+        updateNum <- peekByteOff basePtr 8
+        portReleaseNum <- peekByteOff basePtr 12
+        portUpdateNum <- peekByteOff basePtr 16
+        fullVersionNum <- peekByteOff basePtr 20
+        return VersionInfo{..}
+    poke p VersionInfo{..} = do
+        let basePtr = castPtr p
+        pokeByteOff basePtr 0 versionNum
+        pokeByteOff basePtr 4 releaseNum
+        pokeByteOff basePtr 8 updateNum
+        pokeByteOff basePtr 12 portReleaseNum
+        pokeByteOff basePtr 16 portUpdateNum
+        pokeByteOff basePtr 20 fullVersionNum
 
 getClientVersion ::
   IO VersionInfo

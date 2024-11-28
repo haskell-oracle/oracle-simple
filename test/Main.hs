@@ -22,6 +22,9 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import Test.Hspec (Spec, around, describe, hspec, it, shouldBe)
 import Test.Hspec.Hedgehog (hedgehog)
+import Foreign (peek, Storable, with)
+import Foreign.C.Types (CLong(..), CUInt(..))
+import Foreign.C.String (newCString)
 
 import Database.Oracle.Simple
 
@@ -242,5 +245,32 @@ spec pool = do
         results <- query_ @(Only Int) conn "select * from transactions_test"
         void $ execute_ conn "drop table transactions_test"
         results `shouldBe` [Only 1 .. Only 8] <> [Only 10]
+    describe "Storable round trip tests" $ do
+        it "VersionInfo" $ \_ -> do
+            let versionInfo = VersionInfo {
+                versionNum = 1
+              , releaseNum = 2
+              , updateNum = 3
+              , portReleaseNum = 4
+              , portUpdateNum = 5
+              , fullVersionNum = 6
+            }
+            result <- roundTripStorable versionInfo
+            result `shouldBe` versionInfo
+        it "DPIXid" $ \_ -> do
+            someCString <- newCString "hello"
+            let dpixid = DPIXid { 
+                dpixFormatId = CLong 1
+              , dpixGlobalTransactionId = someCString
+              , dpixGlobalTransactionIdLength = CUInt 2
+              , dpixBranchQualifier = someCString
+              , dpixBranchQualifierLength = CUInt 3
+            }
+            result <- roundTripStorable dpixid
+            result `shouldBe` dpixid
   where
     handleOracleError action = Exc.try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())
+
+-- | Round-trip a value through its `Storable` instance.
+roundTripStorable :: Storable a => a -> IO a
+roundTripStorable x = with x peek

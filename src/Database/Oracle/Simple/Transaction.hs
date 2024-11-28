@@ -1,5 +1,3 @@
-{-# LANGUAGE DeriveAnyClass #-}
-{-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE RecordWildCards #-}
@@ -7,7 +5,9 @@
 {-# LANGUAGE ViewPatterns #-}
 
 module Database.Oracle.Simple.Transaction
-  ( beginTransaction,
+  ( 
+    DPIXid (..),
+    beginTransaction,
     commitTransaction,
     prepareCommit,
     withTransaction,
@@ -19,12 +19,11 @@ import Control.Exception (catch, throw)
 import Control.Monad (replicateM, void, when, (<=<))
 import Data.UUID (UUID, toString)
 import Data.UUID.V4 (nextRandom)
-import Foreign (alloca, peek, poke, withForeignPtr)
+import Foreign (alloca, withForeignPtr)
 import Foreign.C.String (CString, withCStringLen)
 import Foreign.C.Types (CInt (CInt), CLong, CUInt (CUInt))
-import Foreign.Ptr (Ptr)
-import Foreign.Storable.Generic (GStorable)
-import GHC.Generics (Generic)
+import Foreign.Ptr (Ptr ,castPtr)
+import Foreign.Storable (Storable(..))
 import System.Random (getStdRandom, uniformR)
 
 import Database.Oracle.Simple.Execute (execute_)
@@ -141,8 +140,86 @@ data DPIXid = DPIXid
   , dpixBranchQualifier :: CString
   , dpixBranchQualifierLength :: CUInt
   }
-  deriving (Generic, Show)
-  deriving anyclass (GStorable)
+  deriving (Show, Eq)
+
+instance Storable DPIXid where
+    sizeOf _ =
+        let
+            -- Sizes of fields
+            sizeFormatId = sizeOf (undefined :: CLong)
+            sizeTransactionId = sizeOf (undefined :: CString)
+            sizeTransactionIdLength = sizeOf (undefined :: CUInt)
+            sizeQualifier = sizeOf (undefined :: CString)
+            sizeQualifierLength = sizeOf (undefined :: CUInt)
+
+            -- Alignments of fields
+            alignFormatId = alignment (undefined :: CLong)
+            alignTransactionId = alignment (undefined :: CString)
+            alignTransactionIdLength = alignment (undefined :: CUInt)
+            alignQualifier = alignment (undefined :: CString)
+            alignQualifierLength = alignment (undefined :: CUInt)
+
+            -- Padding for each field
+            paddingTransactionId = padding sizeFormatId alignTransactionId
+            paddingTransactionIdLength = padding (sizeTransactionId + paddingTransactionId) alignTransactionIdLength
+            paddingQualifier = padding (sizeTransactionIdLength + paddingTransactionIdLength) alignQualifier
+            paddingQualifierLength = padding (sizeQualifier + paddingQualifier) alignQualifierLength
+        in
+            sizeFormatId +
+            paddingTransactionId + sizeTransactionId +
+            paddingTransactionIdLength + sizeTransactionIdLength +
+            paddingQualifier + sizeQualifier +
+            paddingQualifierLength + sizeQualifierLength +
+            -- Final padding to align the structure itself
+            padding (sizeFormatId +
+                     paddingTransactionId + sizeTransactionId +
+                     paddingTransactionIdLength + sizeTransactionIdLength +
+                     paddingQualifier + sizeQualifier +
+                     paddingQualifierLength + sizeQualifierLength) alignFormatId
+
+    alignment _ = alignment (undefined :: CLong)
+
+    peek p = do
+        let basePtr = castPtr p
+        formatId <- peekByteOff basePtr 0
+
+        let offsetTransactionId = alignedOffset 0 (sizeOf (undefined :: CLong)) (alignment (undefined :: CString))
+        transactionId <- peekByteOff basePtr offsetTransactionId
+
+        let offsetTransactionIdLength = offsetTransactionId + sizeOf (undefined :: CString)
+        transactionIdLength <- peekByteOff basePtr offsetTransactionIdLength
+
+        let offsetQualifier = alignedOffset offsetTransactionIdLength (sizeOf (undefined :: CUInt)) (alignment (undefined :: CString))
+        qualifier <- peekByteOff basePtr offsetQualifier
+
+        let offsetQualifierLength = offsetQualifier + sizeOf (undefined :: CString)
+        qualifierLength <- peekByteOff basePtr offsetQualifierLength
+
+        return $ DPIXid formatId transactionId transactionIdLength qualifier qualifierLength
+
+    poke p (DPIXid formatId transactionId transactionIdLength qualifier qualifierLength) = do
+        let basePtr = castPtr p
+        pokeByteOff basePtr 0 formatId
+
+        let offsetTransactionId = alignedOffset 0 (sizeOf (undefined :: CLong)) (alignment (undefined :: CString))
+        pokeByteOff basePtr offsetTransactionId transactionId
+
+        let offsetTransactionIdLength = offsetTransactionId + sizeOf (undefined :: CString)
+        pokeByteOff basePtr offsetTransactionIdLength transactionIdLength
+
+        let offsetQualifier = alignedOffset offsetTransactionIdLength (sizeOf (undefined :: CUInt)) (alignment (undefined :: CString))
+        pokeByteOff basePtr offsetQualifier qualifier
+
+        let offsetQualifierLength = offsetQualifier + sizeOf (undefined :: CString)
+        pokeByteOff basePtr offsetQualifierLength qualifierLength
+
+-- Helper to calculate padding between fields
+padding :: Int -> Int -> Int
+padding size align = (align - size `mod` align) `mod` align
+
+-- Helper to calculate aligned offsets
+alignedOffset :: Int -> Int -> Int -> Int
+alignedOffset base size align = base + size + padding (base + size) align
 
 withDPIXid :: Transaction -> (Ptr DPIXid -> IO a) -> IO a
 withDPIXid Transaction {..} action =
