@@ -14,7 +14,7 @@ jobs:
        with:
          nix_path: nixpkgs=channel:nixos-unstable
      - name: run oracle
-       run: docker-compose up -d
+       run: nix-shell -p docker-compose --run "docker-compose up -d"
      - name: build
        run: nix-build
      - name: test
