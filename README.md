@@ -21,8 +21,8 @@ import GHC.Generics (Generic)
 main :: IO ()
 main = do
   let stmt = "select count(*), sysdate, 'ignore next column', 125.24, 3.14 from dual"
-  conn <- createConn (ConnectionParams "username" "password" "localhost/XEPDB1")
-  rows <- query @ReturnedRow conn stmt
+  conn <- connect (ConnectionParams "username" "password" "localhost/XEPDB1" Nothing)
+  rows <- query_ conn stmt :: IO [ReturnedRow]
   print rows
 
 -- [ ReturnedRow { count = RowCount {getRowCount = 1.0}
