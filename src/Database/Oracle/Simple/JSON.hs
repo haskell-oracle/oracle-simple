@@ -8,7 +8,7 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 
-module Database.Oracle.Simple.JSON (AesonField (..), JsonDecodeError (..)) where
+module Database.Oracle.Simple.JSON (AesonField (..), JsonDecodeError (..), DPIJsonNode(..)) where
 
 import Control.Exception (Exception (displayException), SomeException, catch, evaluate, throwIO)
 import Control.Monad (void, (<=<))
@@ -22,9 +22,10 @@ import Data.Scientific (fromFloatDigits)
 import Data.String (fromString)
 import Data.Text.Encoding (decodeUtf8)
 import qualified Data.Vector as Vector
-import Foreign (Ptr, Storable, alloca, peek, peekArray)
+import Foreign (Ptr, Storable, alloca, peekArray)
 import Foreign.C (CDouble (CDouble), CInt (CInt), CString, CUInt (CUInt), peekCStringLen)
-import Foreign.Storable.Generic (GStorable)
+import Foreign.Storable.Generic (GStorable, Storable(..))
+import Foreign.Ptr (castPtr, plusPtr)
 import GHC.Generics (Generic)
 
 import Database.Oracle.Simple.FromField (FieldParser (FieldParser), FromField (fromDPINativeType, fromField), ReadDPIBuffer)
@@ -137,9 +138,27 @@ data DPIJsonNode = DPIJsonNode
   { djnOracleTypeNumber :: DPIOracleType
   , djnNativeTypeNumber :: DPINativeType
   , djnValue :: Ptr ReadBuffer
-  }
-  deriving (Generic)
-  deriving anyclass (GStorable)
+  } deriving (Eq, Show)
+
+instance Storable DPIJsonNode where
+    sizeOf _ = sizeOf (undefined :: DPIOracleType)
+                + sizeOf (undefined :: DPINativeType)
+                    + sizeOf (undefined :: Ptr ReadBuffer)
+    alignment _ = alignment (undefined :: DPIOracleType)
+
+    peek ptr = do
+      let base = castPtr ptr
+      DPIJsonNode
+        <$> peek (base `plusPtr` 0) -- DPIOracleType
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIOracleType)) -- DPINativeType
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIOracleType)
+                                   `plusPtr` sizeOf (undefined :: DPINativeType)) -- Ptr ReadBuffer
+    poke ptr DPIJsonNode{..} = do
+      let base = castPtr ptr
+      poke (base `plusPtr` 0) djnOracleTypeNumber
+      poke (base `plusPtr` sizeOf (undefined :: DPIOracleType)) djnNativeTypeNumber
+      poke (base `plusPtr` sizeOf (undefined :: DPIOracleType)
+                    `plusPtr` sizeOf (undefined :: Ptr ReadBuffer)) djnValue
 
 data DPIJsonArray = DPIJsonArray
   { djaNumElements :: CUInt
