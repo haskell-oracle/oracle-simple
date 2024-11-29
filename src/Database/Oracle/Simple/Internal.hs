@@ -820,8 +820,64 @@ data DPICommonCreateParams = DPICommonCreateParams
   , sodaMetadataCache :: Int
   , stmtCacheSize :: CInt
   }
-  deriving (Show, Eq, Generic)
-  deriving anyclass (GStorable)
+  deriving (Show, Eq)
+
+instance Storable DPICommonCreateParams where
+    sizeOf _ =  sizeOf (undefined :: DPICreateMode)
+              + (4 * sizeOf (undefined :: CString))
+              + (3 * sizeOf (undefined :: CInt))
+              + sizeOf (undefined :: Int)
+
+    alignment _ = alignment (undefined :: Int)
+
+    peek ptr = do
+      let base = castPtr ptr
+      DPICommonCreateParams
+        <$> peek (base `plusPtr` 0)                                   -- createMode
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPICreateMode)) -- encoding
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` sizeOf (undefined :: CString))       -- nencoding
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))) -- edition
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (3 * sizeOf (undefined :: CString))) -- editionLength
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (3 * sizeOf (undefined :: CString))
+                       `plusPtr` sizeOf (undefined :: CInt)) -- driverName
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` sizeOf (undefined :: CInt)) -- driverNameLength
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (2 * sizeOf (undefined :: CInt))) -- sodaMetadataCache
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (2 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: Int)) -- stmtCacheSize
+
+    poke ptr DPICommonCreateParams{..} = do
+        let base = castPtr ptr
+        poke (base `plusPtr` 0) createMode
+        poke (base `plusPtr` sizeOf (undefined :: DPICreateMode)) encoding
+        poke (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` sizeOf (undefined :: CString)) nencoding
+        poke (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))) edition
+        poke (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (3 * sizeOf (undefined :: CString))) editionLength
+        poke (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (3 * sizeOf (undefined :: CString))
+                       `plusPtr` sizeOf (undefined :: CInt)) driverName
+        poke (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` sizeOf (undefined :: CInt)) driverNameLength
+        poke (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (2 * sizeOf (undefined :: CInt))) sodaMetadataCache
+        poke (base `plusPtr` sizeOf (undefined :: DPICreateMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (2 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: Int)) stmtCacheSize
 
 -- | typedef uint32_t dpiCreateMode;
 data DPICreateMode
@@ -1086,8 +1142,61 @@ data DPITimestamp = DPITimestamp
   , tzHourOffset :: Int8
   , tzMinuteOffset :: Int8
   }
-  deriving (Show, Eq, Generic)
-  deriving anyclass (GStorable)
+  deriving (Show, Eq)
+
+instance Storable DPITimestamp where
+    sizeOf _ = sizeOf (undefined :: Int16)
+             + (5 * sizeOf (undefined :: Word8))
+             + sizeOf (undefined :: CUInt)
+             + (2 * sizeOf (undefined :: Int8))
+
+    alignment _ = sizeOf (undefined :: CUInt)
+
+    peek ptr = do
+        let base = castPtr ptr
+        DPITimestamp
+          <$> peek (base `plusPtr` 0)                           -- year
+          <*> peek (base `plusPtr`      sizeOf (undefined :: Int16)) -- month
+          <*> peek (base `plusPtr` sizeOf (undefined :: Int16)
+                        `plusPtr` sizeOf (undefined :: Word8)) -- day
+          <*> peek (base `plusPtr` sizeOf (undefined :: Int16)
+                        `plusPtr` (2 * sizeOf (undefined :: Word8))) -- hour
+          <*> peek (base `plusPtr` sizeOf (undefined :: Int16)
+                        `plusPtr` (3 * sizeOf (undefined :: Word8))) -- minute
+          <*> peek (base `plusPtr` sizeOf (undefined :: Int16)
+                        `plusPtr` (4 * sizeOf (undefined :: Word8))) -- second
+          <*> peek (base `plusPtr` sizeOf (undefined :: Int16)
+                        `plusPtr` (5 * sizeOf (undefined :: Word8))) -- fsecond
+          <*> peek (base `plusPtr` sizeOf (undefined :: Int16)
+                        `plusPtr` (5 * sizeOf (undefined :: Word8))
+                        `plusPtr` sizeOf (undefined :: CUInt)) -- tzHourOffset
+          <*> peek (base `plusPtr` sizeOf (undefined :: Int16)
+                        `plusPtr` (5 * sizeOf (undefined :: Word8))
+                        `plusPtr` sizeOf (undefined :: CUInt)
+                        `plusPtr` sizeOf (undefined :: Int8)) -- tzMinuteOffset
+    
+    poke ptr DPITimestamp{..} = do
+        let base = castPtr ptr
+        poke (base `plusPtr` 0) year
+        poke (base `plusPtr` sizeOf (undefined :: Int16)) month
+        poke (base `plusPtr` sizeOf (undefined :: Int16) 
+                       `plusPtr` sizeOf (undefined :: Word8)) day
+        poke (base `plusPtr` sizeOf (undefined :: Int16) 
+                       `plusPtr` (2 * sizeOf (undefined :: Word8))) hour
+        poke (base `plusPtr` sizeOf (undefined :: Int16) 
+                       `plusPtr` (3 * sizeOf (undefined :: Word8))) minute
+        poke (base `plusPtr` sizeOf (undefined :: Int16) 
+                       `plusPtr` (4 * sizeOf (undefined :: Word8))) second
+        poke (base `plusPtr` sizeOf (undefined :: Int16) 
+                       `plusPtr` (5 * sizeOf (undefined :: Word8))) fsecond
+        poke (base `plusPtr` sizeOf (undefined :: Int16) 
+                       `plusPtr` (5 * sizeOf (undefined :: Word8))
+                       `plusPtr` sizeOf (undefined :: CUInt)) tzHourOffset
+        poke (base `plusPtr` sizeOf (undefined :: Int16) 
+                       `plusPtr` (5 * sizeOf (undefined :: Word8))
+                       `plusPtr` sizeOf (undefined :: CUInt)
+                       `plusPtr` sizeOf (undefined :: Int8)) tzMinuteOffset
+
 
 {- | Converts a DPITimestamp into the UTCTime zone by applying the offsets
 to the year, month, day, hour, minutes and seconds
@@ -1123,8 +1232,40 @@ data DPIAppContext = DPIAppContext
   , value :: CString
   , valueLength :: CUInt
   }
-  deriving (Show, Eq, Generic)
-  deriving anyclass (GStorable)
+  deriving (Show, Eq)
+
+instance Storable DPIAppContext where
+    sizeOf _ = (3 * sizeOf (undefined :: CString))
+                + (3 * sizeOf (undefined :: CUInt))
+
+    alignment _ = alignment (undefined :: CUInt)
+
+    peek ptr = do
+        let base = castPtr ptr
+        DPIAppContext
+          <$> peek (base `plusPtr` 0)                           -- namespaceName
+          <*> peek (base `plusPtr`  sizeOf (undefined :: CString)) -- namespaceNameLength
+          <*> peek (base `plusPtr`  sizeOf (undefined :: CString)
+                            `plusPtr`  sizeOf (undefined :: CUInt)) -- name
+          <*> peek (base `plusPtr` (2 * sizeOf (undefined :: CString))
+                            `plusPtr` sizeOf (undefined :: CUInt)) -- nameLength
+          <*> peek (base `plusPtr` (2 * sizeOf (undefined :: CString))
+                            `plusPtr` (2 * sizeOf (undefined :: CUInt))) -- value
+          <*> peek (base `plusPtr` (3 * sizeOf (undefined :: CString))
+                            `plusPtr` (2 * sizeOf (undefined :: CUInt))) -- valueLength
+
+    poke ptr DPIAppContext{..} = do
+        let base = castPtr ptr
+        poke (base `plusPtr` 0) namespaceName
+        poke (base `plusPtr` sizeOf (undefined :: CString)) namespaceNameLength
+        poke (base `plusPtr` sizeOf (undefined :: CString)
+                        `plusPtr` sizeOf (undefined :: CUInt)) name
+        poke (base `plusPtr` (2 * sizeOf (undefined :: CString))
+                        `plusPtr` sizeOf (undefined :: CUInt)) nameLength
+        poke (base `plusPtr` (2 * sizeOf (undefined :: CString))
+                        `plusPtr` (2 * sizeOf (undefined :: CUInt))) value
+        poke (base `plusPtr` (3 * sizeOf (undefined :: CString))
+                        `plusPtr` (2 * sizeOf (undefined :: CUInt))) valueLength
 
 data DPIContextCreateParams = DPIContextCreateParams
   { defaultDriverName :: CString
@@ -1133,8 +1274,29 @@ data DPIContextCreateParams = DPIContextCreateParams
   , oracleClientLibDir :: CString
   , oracleClientConfigDir :: CString
   }
-  deriving (Show, Eq, Generic)
-  deriving anyclass (GStorable)
+  deriving (Show, Eq)
+
+instance Storable DPIContextCreateParams where
+    sizeOf _ = 5 * sizeOf (undefined :: CString)
+    alignment _ = alignment (undefined :: CString)
+
+    peek ptr = do
+        let base = castPtr ptr
+        DPIContextCreateParams
+            <$> peek (base `plusPtr` 0) -- defaultDriverName
+            <*> peek (base `plusPtr` sizeOf (undefined :: CString)) -- defaultEncoding
+            <*> peek (base `plusPtr` (2 * sizeOf (undefined :: CString))) -- loadErrorUrl
+            <*> peek (base `plusPtr` (3 * sizeOf (undefined :: CString))) -- oracleClientLibDir
+            <*> peek (base `plusPtr` (4 * sizeOf (undefined :: CString))) -- oracleClientConfigDir
+
+    poke ptr DPIContextCreateParams{..} = do
+        let base = castPtr ptr
+        poke (base `plusPtr` 0) defaultDriverName
+        poke (base `plusPtr` sizeOf (undefined :: CString)) defaultEncoding
+        poke (base `plusPtr` (2 * sizeOf (undefined :: CString))) loadErrorUrl
+        poke (base `plusPtr` (3 * sizeOf (undefined :: CString))) oracleClientLibDir
+        poke (base `plusPtr` (4 * sizeOf (undefined :: CString))) oracleClientConfigDir
+        
 
 foreign import ccall "dpiContext_getError"
   dpiContext_getError :: DPIContext -> Ptr ErrorInfo -> IO ()
@@ -1359,6 +1521,7 @@ data DPIOracleType
   | DPI_ORACLE_TYPE_UROWID
   | DPI_ORACLE_TYPE_LONG_NVARCHAR
   | DPI_ORACLE_TYPE_MAX
+    deriving (Eq, Show)
 
 instance Storable DPIOracleType where
   sizeOf _ = sizeOf (undefined :: CUInt)
