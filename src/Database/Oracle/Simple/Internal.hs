@@ -90,7 +90,7 @@ import Foreign.C.String (CString, newCString, newCStringLen, peekCString, peekCS
 import Foreign.C.Types (CInt (..), CUInt (..))
 import Foreign.ForeignPtr (ForeignPtr, addForeignPtrFinalizer, finalizeForeignPtr, newForeignPtr_, withForeignPtr)
 import Foreign.Marshal.Alloc (alloca, free)
-import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr)
+import Foreign.Ptr (FunPtr, Ptr, castPtr, nullPtr, plusPtr)
 import Foreign.Storable.Generic (GStorable, Storable (..))
 import GHC.Generics (Generic)
 import GHC.TypeLits (Natural)
@@ -512,8 +512,302 @@ data ConnectionCreateParams = ConnectionCreateParams
   , numSuperShardingKeyColumns :: Word8
   , outNewSession :: CInt
   }
-  deriving (Show, Eq, Generic)
-  deriving anyclass (GStorable)
+  deriving (Show, Eq)
+
+instance Storable ConnectionCreateParams where
+
+    sizeOf _ =  sizeOf (undefined :: DPIAuthMode)
+              + (4 * sizeOf (undefined :: CString))
+              + (5 * sizeOf (undefined :: CUInt))
+              + sizeOf (undefined :: DPIPurity)
+              + sizeOf (undefined :: DPIAppContext)
+              + (4 * sizeOf (undefined :: CInt))
+              + sizeOf (undefined :: Ptr ())
+              + sizeOf (undefined :: DPIPool)
+              + (2 * sizeOf (undefined :: DPIShardingKeyColumn))
+              + (2 * sizeOf (undefined :: Word8))
+    alignment _ = alignment (undefined :: CUInt)
+    
+    peek ptr = do
+      let base = castPtr ptr
+      ConnectionCreateParams
+        <$> peek (base `plusPtr` 0)                                 -- authMode
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode)) -- connectionClass
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` sizeOf (undefined :: CString))     -- connectionClassLength
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` sizeOf (undefined :: CString)
+                       `plusPtr` sizeOf (undefined :: CUInt))     -- purity
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` sizeOf (undefined :: CString)
+                       `plusPtr` sizeOf (undefined :: CUInt)
+                       `plusPtr` sizeOf (undefined :: DPIPurity)) -- newPassword
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))
+                       `plusPtr` sizeOf (undefined :: CUInt)
+                       `plusPtr` sizeOf (undefined :: DPIPurity)) -- newPasswordLength
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))
+                       `plusPtr` (2 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)) -- appContenxt
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))
+                       `plusPtr` (2 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)) -- numAppContext
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))
+                       `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)) -- externalAuth
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))
+                       `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` sizeOf (undefined :: CInt)
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)) -- externalHandle
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))
+                       `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` sizeOf (undefined :: CInt)
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())) -- pool
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (2 * sizeOf (undefined :: CString))
+                       `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` sizeOf (undefined :: CInt)
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)) -- tag
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (3 * sizeOf (undefined :: CString))
+                       `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` sizeOf (undefined :: CInt)
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)) -- tagLength
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (3 * sizeOf (undefined :: CString))
+                       `plusPtr` (4 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` sizeOf (undefined :: CInt)
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)) -- matchAnyTag
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (3 * sizeOf (undefined :: CString))
+                       `plusPtr` (4 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` (2 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)) -- outTag
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (4 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` (2 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)) -- outTagLength
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (5 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` (2 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)) -- outTagFound
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (5 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` (3 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)) -- shardingKeyColumn
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (5 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` (3 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)
+                       `plusPtr` sizeOf (undefined :: DPIShardingKeyColumn)) -- numShardingKeyColumns
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (5 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` (3 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)
+                       `plusPtr` sizeOf (undefined :: DPIShardingKeyColumn)
+                       `plusPtr` sizeOf (undefined :: Word8)) -- superShardingKeyColumns
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (5 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` (3 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)
+                       `plusPtr` (2 * sizeOf (undefined :: DPIShardingKeyColumn))
+                       `plusPtr` sizeOf (undefined :: Word8)) -- numSuperShardingKeyColumns
+        <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+                       `plusPtr` (4 * sizeOf (undefined :: CString))
+                       `plusPtr` (5 * sizeOf (undefined :: CUInt))
+                       `plusPtr` sizeOf (undefined :: DPIPurity)
+                       `plusPtr` (3 * sizeOf (undefined :: CInt))
+                       `plusPtr` sizeOf (undefined :: DPIAppContext)
+                       `plusPtr` sizeOf (undefined :: Ptr ())
+                       `plusPtr` sizeOf (undefined :: DPIPool)
+                       `plusPtr` (2 * sizeOf (undefined :: DPIShardingKeyColumn))
+                       `plusPtr` (2 * sizeOf (undefined :: Word8))) -- outNewSession
+
+    poke ptr ConnectionCreateParams{..} = do
+      let base = castPtr ptr
+      poke (base `plusPtr` 0) authMode
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode)) connectionClass
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` sizeOf (undefined :: CString)) connectionClassLength
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` sizeOf (undefined :: CString)
+              `plusPtr` sizeOf (undefined :: CUInt))  purity
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` sizeOf (undefined :: CString)
+              `plusPtr` sizeOf (undefined :: CUInt)
+              `plusPtr` sizeOf (undefined :: DPIPurity)) newPassword
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (2 * sizeOf (undefined :: CString))
+              `plusPtr` sizeOf (undefined :: CUInt)
+              `plusPtr` sizeOf (undefined :: DPIPurity)) newPasswordLength
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (2 * sizeOf (undefined :: CString))
+              `plusPtr` (2 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)) appContenxt
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (2 * sizeOf (undefined :: CString))
+              `plusPtr` (2 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` sizeOf (undefined :: DPIAppContext)) numAppContext
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (2 * sizeOf (undefined :: CString))
+              `plusPtr` (3 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` sizeOf (undefined :: DPIAppContext)) externalAuth
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (2 * sizeOf (undefined :: CString))
+              `plusPtr` (3 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` sizeOf (undefined :: CInt)
+              `plusPtr` sizeOf (undefined :: DPIAppContext)) externalHandle
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (2 * sizeOf (undefined :: CString))
+              `plusPtr` (3 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` sizeOf (undefined :: CInt)
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())) pool
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (2 * sizeOf (undefined :: CString))
+              `plusPtr` (3 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` sizeOf (undefined :: CInt)
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)) tag
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (3 * sizeOf (undefined :: CString))
+              `plusPtr` (3 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` sizeOf (undefined :: CInt)
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)) tagLength
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (3 * sizeOf (undefined :: CString))
+              `plusPtr` (4 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` sizeOf (undefined :: CInt)
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)) matchAnyTag
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (3 * sizeOf (undefined :: CString))
+              `plusPtr` (4 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` (2 * sizeOf (undefined :: CInt))
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)) outTag
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (4 * sizeOf (undefined :: CString))
+              `plusPtr` (4 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` (2 * sizeOf (undefined :: CInt))
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)) outTagLength
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (4 * sizeOf (undefined :: CString))
+              `plusPtr` (5 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` (2 * sizeOf (undefined :: CInt))
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)) outTagFound
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (4 * sizeOf (undefined :: CString))
+              `plusPtr` (5 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` (3 * sizeOf (undefined :: CInt))
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)) shardingKeyColumn
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (4 * sizeOf (undefined :: CString))
+              `plusPtr` (5 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` (3 * sizeOf (undefined :: CInt))
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)
+              `plusPtr` sizeOf (undefined :: DPIShardingKeyColumn)) numShardingKeyColumns
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (4 * sizeOf (undefined :: CString))
+              `plusPtr` (5 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` (3 * sizeOf (undefined :: CInt))
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)
+              `plusPtr` sizeOf (undefined :: DPIShardingKeyColumn)
+              `plusPtr` sizeOf (undefined :: Word8)) superShardingKeyColumns
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (4 * sizeOf (undefined :: CString))
+              `plusPtr` (5 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` (3 * sizeOf (undefined :: CInt))
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)
+              `plusPtr` (2 * sizeOf (undefined :: DPIShardingKeyColumn))
+              `plusPtr` sizeOf (undefined :: Word8)) numSuperShardingKeyColumns
+      poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
+              `plusPtr` (4 * sizeOf (undefined :: CString))
+              `plusPtr` (5 * sizeOf (undefined :: CUInt))
+              `plusPtr` sizeOf (undefined :: DPIPurity)
+              `plusPtr` (3 * sizeOf (undefined :: CInt))
+              `plusPtr` sizeOf (undefined :: DPIAppContext)
+              `plusPtr` sizeOf (undefined :: Ptr ())
+              `plusPtr` sizeOf (undefined :: DPIPool)
+              `plusPtr` (2 * sizeOf (undefined :: DPIShardingKeyColumn))
+              `plusPtr` (2 * sizeOf (undefined :: Word8))) outNewSession
 
 data DPICommonCreateParams = DPICommonCreateParams
   { createMode :: DPICreateMode
