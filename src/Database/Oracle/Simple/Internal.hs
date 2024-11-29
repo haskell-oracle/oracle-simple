@@ -336,8 +336,126 @@ data DPIPoolCreateParams = DPIPoolCreateParams
   , dpi_accessTokenCallback :: FunPtr ()
   , dpi_accessTokenCallbackContext :: Ptr ()
   }
-  deriving (Show, Eq, Generic)
-  deriving anyclass (GStorable)
+  deriving (Show, Eq)
+
+instance Storable DPIPoolCreateParams where
+    sizeOf _ = (9 * sizeOf (undefined :: CUInt))
+              + (4 * sizeOf (undefined :: CInt))
+              + sizeOf (undefined :: DPIPoolGetMode)
+              + sizeOf (undefined :: FunPtr ())
+              + sizeOf (undefined :: Ptr ())
+              + (2 * sizeOf (undefined :: CString))
+
+    alignment _ = alignment (undefined :: CUInt)
+
+    peek ptr = do
+      let base = castPtr ptr
+      DPIPoolCreateParams
+        <$> peek base                           -- dpi_minSessions
+        <*> peek (base `plusPtr`     sizeOf (undefined :: CUInt)) -- dpi_maxSessions
+        <*> peek (base `plusPtr` (2 * sizeOf (undefined :: CUInt))) -- dpi_sessionIncrement
+        <*> peek (base `plusPtr`( 3 * sizeOf (undefined :: CUInt))) -- dpi_pingInterval
+        <*> peek (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr`     sizeOf (undefined :: CInt)) -- dpi_pingTimeout
+        <*> peek (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (2 * sizeOf (undefined :: CInt))) -- dpi_homogeneous
+        <*> peek (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (3 * sizeOf (undefined :: CInt))) -- dpi_externalAuth
+        <*> peek (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))) -- dpi_getMode
+        <*> peek (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)) -- dpi_outPoolName
+        <*> peek (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr`     sizeOf (undefined :: CString)) -- dpi_outPoolNameLength
+        <*> peek (base `plusPtr` (4 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr`     sizeOf (undefined :: CString)) -- dpi_timeout
+        <*> peek (base `plusPtr` (5 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr`     sizeOf (undefined :: CString)) -- dpi_waitTimeout
+        <*> peek (base `plusPtr` (6 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr`     sizeOf (undefined :: CString)) -- dpi_maxLifetimeSession
+        <*> peek (base `plusPtr` (7 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr`     sizeOf (undefined :: CString)) -- dpi_plsqlFixupCallback
+        <*> peek (base `plusPtr` (7 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr` (2 * sizeOf (undefined :: CString))) -- dpi_plsqlFixupCallbackLength
+        <*> peek (base `plusPtr` (8 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr` (2 * sizeOf (undefined :: CString))) -- dpi_maxSessionsPerShard
+        <*> peek (base `plusPtr` (9 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr` (2 * sizeOf (undefined :: CString))) -- dpi_accessTokenCallback
+        <*> peek (base `plusPtr` (10 * sizeOf (undefined :: CUInt))
+                       `plusPtr` (4 * sizeOf (undefined :: CInt))
+                       `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                       `plusPtr` (2 * sizeOf (undefined :: CString))) -- dpi_accessTokenCallbackContext
+
+    poke ptr DPIPoolCreateParams{..} = do
+      let base = castPtr ptr
+      poke base dpi_minSessions
+      poke (base `plusPtr`     sizeOf (undefined :: CUInt)) dpi_maxSessions
+      poke (base `plusPtr` (2 * sizeOf (undefined :: CUInt))) dpi_sessionIncrement
+      poke (base `plusPtr`( 3 * sizeOf (undefined :: CUInt))) dpi_pingInterval
+      poke (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                 `plusPtr`     sizeOf (undefined :: CInt)) dpi_pingTimeout
+      poke (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (2 * sizeOf (undefined :: CInt))) dpi_homogeneous
+      poke (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (3 * sizeOf (undefined :: CInt))) dpi_externalAuth
+      poke (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))) dpi_getMode
+      poke (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)) dpi_outPoolName
+      poke (base `plusPtr` (3 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr`     sizeOf (undefined :: CString)) dpi_outPoolNameLength
+      poke (base `plusPtr` (4 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr`     sizeOf (undefined :: CString)) dpi_timeout
+      poke (base `plusPtr` (5 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr`     sizeOf (undefined :: CString)) dpi_waitTimeout
+      poke (base `plusPtr` (6 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr`     sizeOf (undefined :: CString)) dpi_maxLifetimeSession
+      poke (base `plusPtr` (7 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr`     sizeOf (undefined :: CString)) dpi_plsqlFixupCallback
+      poke (base `plusPtr` (7 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr` (2 * sizeOf (undefined :: CString))) dpi_plsqlFixupCallbackLength
+      poke (base `plusPtr` (8 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr` (2 * sizeOf (undefined :: CString))) dpi_maxSessionsPerShard
+      poke (base `plusPtr` (9 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr` (2 * sizeOf (undefined :: CString))) dpi_accessTokenCallback
+      poke (base `plusPtr` (10 * sizeOf (undefined :: CUInt))
+                 `plusPtr` (4 * sizeOf (undefined :: CInt))
+                 `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
+                 `plusPtr` (2 * sizeOf (undefined :: CString))) dpi_accessTokenCallbackContext
 
 data DPIPoolGetMode
   = DPI_MODE_POOL_GET_FORCEGET
