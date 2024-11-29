@@ -12,7 +12,17 @@
 {- HLINT ignore "Avoid restricted function" -}
 
 module Database.Oracle.Simple.Internal
-  ( DPINativeType (..),
+  ( DPIContextCreateParams (..),
+    DPIIntervalYM(..),
+    DPIIntervalDS (..),
+    DPICreateMode (..),
+    DPIShardingKeyColumn (..),
+    DPIPurity (..),
+    DPIAuthMode (..),
+    ConnectionCreateParams (..),
+    DPIPoolGetMode (..),
+    DPIAppContext (..),
+    DPINativeType (..),
     DPIData (..),
     DPIBytes (..),
     DPIStmt (..),
