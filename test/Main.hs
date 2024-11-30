@@ -22,8 +22,8 @@ import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
 import Test.Hspec (Spec, around, describe, hspec, it, shouldBe)
 import Test.Hspec.Hedgehog (hedgehog)
-import Foreign (peek, Storable, with)
-import Foreign.C.Types (CLong(..), CUInt(..))
+import Foreign (peek, Storable, with, nullFunPtr, nullPtr)
+import Foreign.C.Types (CLong(..), CUInt(..), CInt(..))
 import Foreign.C.String (newCString)
 
 import Database.Oracle.Simple
@@ -268,6 +268,126 @@ spec pool = do
             }
             result <- roundTripStorable dpixid
             result `shouldBe` dpixid
+        it "DPIPoolCreateParams" $ \_ -> do
+            someCString <- newCString "hello"
+            let dPIPoolCreateParams = DPIPoolCreateParams {
+                dpi_minSessions = CUInt 1
+              , dpi_maxSessions = CUInt 1
+              , dpi_sessionIncrement = CUInt 1
+              , dpi_pingInterval = CInt 1
+              , dpi_pingTimeout = CInt 1
+              , dpi_homogeneous = CInt 1
+              , dpi_externalAuth = CInt 1
+              , dpi_getMode = DPI_MODE_POOL_GET_WAIT
+              , dpi_outPoolName = someCString
+              , dpi_outPoolNameLength = CUInt 1
+              , dpi_timeout = CUInt 1
+              , dpi_waitTimeout = CUInt 1
+              , dpi_maxLifetimeSession = CUInt 1
+              , dpi_plsqlFixupCallback = someCString
+              , dpi_plsqlFixupCallbackLength = CUInt 1
+              , dpi_maxSessionsPerShard = CUInt 1
+              , dpi_accessTokenCallback = nullFunPtr
+              , dpi_accessTokenCallbackContext = nullPtr
+            }
+            result <- roundTripStorable dPIPoolCreateParams
+            result `shouldBe` dPIPoolCreateParams
+        it "ConnectionCreateParams" $ \_ -> do
+            someCString <- newCString "hello"
+            let dPIAppContext = DPIAppContext {
+              namespaceName = someCString
+            , namespaceNameLength = CUInt 1
+            , name = someCString
+            , nameLength = CUInt 1
+            , value = someCString
+            , valueLength = CUInt 1
+            }
+            let connectionCreateParams = ConnectionCreateParams {
+              authMode = DPI_MODE_AUTH_DEFAULT
+            , connectionClass = someCString
+            , connectionClassLength = CUInt 1
+            , purity = DPI_PURITY_DEFAULT
+            , newPassword = someCString
+            , newPasswordLength = CUInt 1
+            , appContenxt = dPIAppContext
+            , numAppContext = CUInt 1
+            , externalAuth = CInt 1
+            , externalHandle = nullPtr
+            , pool = DPIPool nullPtr
+            , tag = someCString
+            , tagLength = CUInt 1
+            , matchAnyTag = CInt 1
+            , outTag = someCString
+            , outTagLength = CUInt 1
+            , outTagFound = CInt 1
+            , shardingKeyColumn = DPIShardingKeyColumn nullPtr
+            , numShardingKeyColumns = 1
+            , superShardingKeyColumns = DPIShardingKeyColumn nullPtr
+            , numSuperShardingKeyColumns = 1
+            , outNewSession = CInt 1
+            }
+            result <- roundTripStorable connectionCreateParams
+            result `shouldBe` connectionCreateParams
+        it "DPICommonCreateParams" $ \_ -> do
+            someCString <- newCString "hello"
+            let dPICommonCreateParams = DPICommonCreateParams { 
+              createMode = DPI_MODE_CREATE_DEFAULT 
+            , encoding = someCString
+            , nencoding = someCString
+            , edition = someCString
+            , editionLength = CInt 1
+            , driverName = someCString
+            , driverNameLength = CInt 1
+            , sodaMetadataCache = 1
+            , stmtCacheSize = CInt 1
+          }
+            result <- roundTripStorable dPICommonCreateParams
+            result `shouldBe` dPICommonCreateParams
+        it "DPITimestamp" $ \_ -> do
+          let dPITimestamp = DPITimestamp {
+            year = 1
+          , month = 1
+          , day = 1
+          , hour = 1
+          , minute = 1
+          , second = 1
+          , fsecond = CUInt 1
+          , tzHourOffset = 1
+          , tzMinuteOffset = 1
+          }
+          result <- roundTripStorable dPITimestamp
+          result `shouldBe` dPITimestamp
+        it "DPIAppContext" $ \_ -> do
+          someCString <- newCString "hello"
+          let dPIAppContext = DPIAppContext {
+            namespaceName = someCString
+          , namespaceNameLength = CUInt 1
+          , name = someCString
+          , nameLength = CUInt 1
+          , value = someCString
+          , valueLength = CUInt 1
+          } 
+          result <- roundTripStorable dPIAppContext
+          result `shouldBe` dPIAppContext
+        it "DPIContextCreateParams" $ \_ -> do
+          someCString <- newCString "hello"
+          let dPIContextCreateParams = DPIContextCreateParams {
+            defaultDriverName = someCString
+          , defaultEncoding = someCString
+          , loadErrorUrl = someCString
+          , oracleClientLibDir = someCString
+          , oracleClientConfigDir = someCString
+          }
+          result <- roundTripStorable dPIContextCreateParams
+          result `shouldBe` dPIContextCreateParams
+        it "DPIJsonNode" $ \_ -> do
+          let dPIJsonNode = DPIJsonNode {
+                djnOracleTypeNumber = DPI_ORACLE_TYPE_NONE
+               , djnNativeTypeNumber = DPI_NATIVE_TYPE_INT64 
+               , djnValue = nullPtr
+            }
+          result <- roundTripStorable dPIJsonNode
+          result `shouldBe` dPIJsonNode
   where
     handleOracleError action = Exc.try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())
 
