@@ -7,6 +7,7 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
+{-# OPTIONS_GHC -Wno-missed-specialisations #-} -- suppressing fromFloatDigits warning
 
 module Database.Oracle.Simple.JSON (AesonField (..), JsonDecodeError (..)) where
 
