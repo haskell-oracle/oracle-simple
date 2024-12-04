@@ -4,6 +4,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main
   ( main,
@@ -25,6 +26,7 @@ import Test.Hspec.Hedgehog (hedgehog)
 import Foreign (peek, Storable, with, nullFunPtr, nullPtr)
 import Foreign.C.Types (CLong(..), CUInt(..), CInt(..))
 import Foreign.C.String (newCString)
+import qualified Data.ByteString.Char8 as BSC
 
 import Database.Oracle.Simple
 
@@ -388,6 +390,38 @@ spec pool = do
             }
           result <- roundTripStorable dPIJsonNode
           result `shouldBe` dPIJsonNode
+    describe "Advanced Queuing" $ do
+      it "should create and release a raw queue successfully" $ \conn -> do
+        queue <- genQueue conn "test_queue"
+        queueRelease queue
+        -- No exception implies success
+      it "should set and get a msgProp payload" $ \conn -> do
+        msgProps <- genMsgProps conn
+        setMsgPropsPayLoadBytes msgProps (BSC.pack "Hello from Haskell!")
+        payload <- getMsgPropsPayLoadBytes msgProps
+        payload `shouldBe` Just "Hello from Haskell!"
+      it "should enque and deque msg prop from queue" $ \conn -> do
+        -- Create the queue table
+        void $ execute_ conn "BEGIN DBMS_AQADM.CREATE_QUEUE_TABLE( \
+                         \ queue_table => 'USERNAME.TEST_QUEUE_TABLE', \
+                         \ queue_payload_type => 'SYS.AQ$_JMS_TEXT_MESSAGE' \
+                         \ ); END;"
+    
+        -- Create the queue
+        void $ execute_ conn "BEGIN DBMS_AQADM.CREATE_QUEUE( \
+                         \ queue_name => 'USERNAME.TEST_QUEUE', \
+                         \ queue_table => 'USERNAME.TEST_QUEUE_TABLE' \
+                         \ ); END;"
+    
+        -- Start the queue
+        void $ execute_ conn "BEGIN DBMS_AQADM.START_QUEUE( \
+                         \ queue_name => 'USERNAME.TEST_QUEUE' \
+                         \ ); END;"
+        msgProps <- genMsgProps conn
+        setMsgPropsPayLoadBytes msgProps (BSC.pack "Hello from Haskell!")
+        queue <- genQueue conn "TEST_QUEUE"
+        void $ deqOne queue 
+        queueRelease queue
   where
     handleOracleError action = Exc.try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())
 

@@ -39,6 +39,7 @@ library
       Database.Oracle.Simple.ToField
       Database.Oracle.Simple.ToRow
       Database.Oracle.Simple.Transaction
+      Database.Oracle.Simple.Queue
   hs-source-dirs:
       src
   c-sources:
@@ -92,6 +93,7 @@ executable tests
     , hspec-hedgehog
     , oracle-simple
     , time
+    , bytestring
 
 source-repository head
   type: git
