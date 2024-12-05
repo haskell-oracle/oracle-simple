@@ -1,14 +1,10 @@
-version: "3"
 services:
   dev-db:
     container_name: dev-db
-    image: gvenzl/oracle-free:23-slim-faststart
+    image: container-registry-mumbai.oracle.com/database/free
     volumes:
-      - ./db:/container-entrypoint-startdb.d
+      - ./init-scripts:/opt/oracle/scripts/startup
     environment:
-      ORACLE_DATABASE: devdb
-      ORACLE_PASSWORD: password
-      APP_USER: username
-      APP_USER_PASSWORD: password
+      ORACLE_PWD: password
     ports:
       - 1521:1521

@@ -58,7 +58,7 @@ main :: IO ()
 main = withPool params $ hspec . spec
 
 params :: ConnectionParams
-params = ConnectionParams "username" "password" "localhost:1521/devdb" Nothing
+params = ConnectionParams "username" "password" "localhost:1521/free" Nothing
 
 genDPITimestamp :: HH.Gen DPITimestamp
 genDPITimestamp = do
@@ -401,26 +401,27 @@ spec pool = do
         payload <- getMsgPropsPayLoadBytes msgProps
         payload `shouldBe` Just "Hello from Haskell!"
       it "should enque and deque msg prop from queue" $ \conn -> do
-        -- Create the queue table
-        void $ execute_ conn "BEGIN DBMS_AQADM.CREATE_QUEUE_TABLE( \
-                         \ queue_table => 'USERNAME.TEST_QUEUE_TABLE', \
-                         \ queue_payload_type => 'SYS.AQ$_JMS_TEXT_MESSAGE' \
-                         \ ); END;"
-    
-        -- Create the queue
-        void $ execute_ conn "BEGIN DBMS_AQADM.CREATE_QUEUE( \
-                         \ queue_name => 'USERNAME.TEST_QUEUE', \
-                         \ queue_table => 'USERNAME.TEST_QUEUE_TABLE' \
-                         \ ); END;"
-    
-        -- Start the queue
-        void $ execute_ conn "BEGIN DBMS_AQADM.START_QUEUE( \
-                         \ queue_name => 'USERNAME.TEST_QUEUE' \
-                         \ ); END;"
+        void $ execute_ conn "\
+        \BEGIN\
+         \ DBMS_AQADM.CREATE_QUEUE_TABLE(\
+           \  queue_table        => 'TEST_QUEUE_TABLE',\
+           \  queue_payload_type => 'RAW'\
+         \ );\
+         \ DBMS_AQADM.CREATE_QUEUE(\
+          \   queue_name => 'TEST_QUEUE',\
+          \   queue_table => 'TEST_QUEUE_TABLE'\
+         \ );\
+         \ DBMS_AQADM.START_QUEUE(\
+           \  queue_name => 'TEST_QUEUE'\
+          \);\
+        \END;"
         msgProps <- genMsgProps conn
         setMsgPropsPayLoadBytes msgProps (BSC.pack "Hello from Haskell!")
         queue <- genQueue conn "TEST_QUEUE"
-        void $ deqOne queue 
+        void $ enqOne queue msgProps
+        newMsgProps <- deqOne queue 
+        payload <- getMsgPropsPayLoadBytes newMsgProps
+        payload `shouldBe` Just "Hello from Haskell!"
         queueRelease queue
   where
     handleOracleError action = Exc.try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())
