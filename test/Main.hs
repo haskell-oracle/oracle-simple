@@ -4,6 +4,7 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE OverloadedStrings #-}
 
 module Main
   ( main,
@@ -25,6 +26,7 @@ import Test.Hspec.Hedgehog (hedgehog)
 import Foreign (peek, Storable, with, nullFunPtr, nullPtr)
 import Foreign.C.Types (CLong(..), CUInt(..), CInt(..))
 import Foreign.C.String (newCString)
+import qualified Data.ByteString.Char8 as BSC
 
 import Database.Oracle.Simple
 
@@ -56,7 +58,7 @@ main :: IO ()
 main = withPool params $ hspec . spec
 
 params :: ConnectionParams
-params = ConnectionParams "username" "password" "localhost:1521/devdb" Nothing
+params = ConnectionParams "username" "password" "localhost:1521/free" Nothing
 
 genDPITimestamp :: HH.Gen DPITimestamp
 genDPITimestamp = do
@@ -388,6 +390,39 @@ spec pool = do
             }
           result <- roundTripStorable dPIJsonNode
           result `shouldBe` dPIJsonNode
+    describe "Advanced Queuing" $ do
+      it "should create and release a raw queue successfully" $ \conn -> do
+        queue <- genQueue conn "test_queue"
+        queueRelease queue
+        -- No exception implies success
+      it "should set and get a msgProp payload" $ \conn -> do
+        msgProps <- genMsgProps conn
+        setMsgPropsPayLoadBytes msgProps (BSC.pack "Hello from Haskell!")
+        payload <- getMsgPropsPayLoadBytes msgProps
+        payload `shouldBe` Just "Hello from Haskell!"
+      it "should enque and deque msg prop from queue" $ \conn -> do
+        void $ execute_ conn "\
+        \BEGIN\
+         \ DBMS_AQADM.CREATE_QUEUE_TABLE(\
+           \  queue_table        => 'TEST_QUEUE_TABLE',\
+           \  queue_payload_type => 'RAW'\
+         \ );\
+         \ DBMS_AQADM.CREATE_QUEUE(\
+          \   queue_name => 'TEST_QUEUE',\
+          \   queue_table => 'TEST_QUEUE_TABLE'\
+         \ );\
+         \ DBMS_AQADM.START_QUEUE(\
+           \  queue_name => 'TEST_QUEUE'\
+          \);\
+        \END;"
+        msgProps <- genMsgProps conn
+        setMsgPropsPayLoadBytes msgProps (BSC.pack "Hello from Haskell!")
+        queue <- genQueue conn "TEST_QUEUE"
+        void $ enqOne queue msgProps
+        newMsgProps <- deqOne queue 
+        payload <- getMsgPropsPayLoadBytes newMsgProps
+        payload `shouldBe` Just "Hello from Haskell!"
+        queueRelease queue
   where
     handleOracleError action = Exc.try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())
 

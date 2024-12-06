@@ -44,6 +44,8 @@ module Database.Oracle.Simple.Internal
     OracleError (..),
     ErrorInfo (..),
     VersionInfo (..),
+    DPIJson (..),
+    genJSON,
     renderErrorInfo,
     ping,
     fetch,
@@ -116,6 +118,10 @@ newtype DPIContext = DPIContext (Ptr DPIContext)
   deriving newtype (Storable)
 
 newtype DPIShardingKeyColumn = DPIShardingKeyColumn (Ptr DPIShardingKeyColumn)
+  deriving (Show, Eq)
+  deriving newtype (Storable)
+
+newtype DPIJson = DPIJson (Ptr DPIJson)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
@@ -207,7 +213,7 @@ foreign import ccall unsafe "dpiConn_create"
     Ptr DPICommonCreateParams ->
     -- | const dpiConnCreateParams *createParams
     Ptr ConnectionCreateParams ->
-    -- | dpi * conn
+    -- | dpiConn ** conn
     Ptr DPIConn ->
     IO CInt
 
@@ -1752,3 +1758,18 @@ Structurally equivalent to 'Data.Functor.Identity.Identity'.
 newtype Only a = Only {fromOnly :: a}
   deriving stock (Eq, Ord, Read, Show, Generic)
   deriving newtype (Enum)
+
+genJSON :: Connection -> IO DPIJson
+genJSON (Connection fptr) = do
+  withForeignPtr fptr $ \conn -> do
+    alloca $ \jsonPtr -> do
+      throwOracleError =<< dpiConn_newJson conn jsonPtr
+      peek jsonPtr
+
+foreign import ccall unsafe "dpiConn_newJson"
+  dpiConn_newJson ::
+    -- | dpiConn *
+    Ptr DPIConn ->
+    -- | dpiJSON **
+    Ptr DPIJson ->
+    IO CInt
