@@ -8,6 +8,8 @@
 {-# LANGUAGE TypeApplications #-}
 {-# LANGUAGE UndecidableInstances #-}
 {-# OPTIONS_GHC -Wno-missed-specialisations #-} -- suppressing fromFloatDigits warning
+{-# OPTIONS_GHC -fplugin=Foreign.Storable.Generic.Plugin #-}
+{-# OPTIONS_GHC -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1 #-}
 
 module Database.Oracle.Simple.JSON (AesonField (..), JsonDecodeError (..), DPIJsonNode(..)) where
 

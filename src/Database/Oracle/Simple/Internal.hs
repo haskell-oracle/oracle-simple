@@ -8,6 +8,8 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# OPTIONS_GHC -fplugin=Foreign.Storable.Generic.Plugin #-}
+{-# OPTIONS_GHC -fplugin-opt=Foreign.Storable.Generic.Plugin:-v1 #-}
 
 {- HLINT ignore "Avoid restricted function" -}
 
