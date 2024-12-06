@@ -1,6 +1,10 @@
 {-# LANGUAGE DerivingStrategies #-}
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE ViewPatterns #-}
+{-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RankNTypes #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 
 module Database.Oracle.Simple.Queue (
     DPIQueue (..)
@@ -8,7 +12,6 @@ module Database.Oracle.Simple.Queue (
   , DPIDeqOptions (..)
   , DPIEnqOptions (..)
   , DPIObjectType (..)
-  , ObjectType (..)
   , deqMany
   , deqOne
   , enqMany
@@ -16,15 +19,20 @@ module Database.Oracle.Simple.Queue (
   , getDeqOptions
   , getEnqOptions
   , queueRelease 
-  , genJSONQueue
+  , genQueueJSON
+  , genQueueObject
   , genMsgProps
   , genQueue 
   , getMsgPropsNumOfAttempts 
   , getMsgPropsDelay
   , getMsgPropsPayLoadBytes
   , getMsgPropsPayLoadJson 
+  , getMsgPropsPayLoadObject 
   , setMsgPropsPayLoadBytes 
   , setMsgPropsPayLoadJSON 
+  , setMsgPropsPayLoadObject
+  , objectAppendElement 
+  , getObjectElementByIdx
 ) where
 
 import Foreign (alloca, withArray, withForeignPtr, nullPtr)
@@ -33,7 +41,10 @@ import Foreign.C.Types (CInt (..), CUInt (..))
 import Foreign.Ptr (Ptr)
 import Foreign.C.String
 import Database.Oracle.Simple.Internal
+import Database.Oracle.Simple.ToField
+import Database.Oracle.Simple.FromField
 import qualified Data.ByteString.Char8 as BSC
+import Data.Proxy (Proxy (..))
 
 newtype DPIQueue = DPIQueue (Ptr DPIQueue)
   deriving (Show, Eq)
@@ -50,13 +61,6 @@ newtype DPIDeqOptions = DPIDeqOptions (Ptr DPIDeqOptions)
 newtype DPIEnqOptions = DPIEnqOptions (Ptr DPIEnqOptions)
   deriving (Show, Eq)
   deriving newtype (Storable)
-
-newtype DPIObjectType = DPIObjectType (Ptr DPIObjectType)
-  deriving (Show, Eq)
-  deriving newtype (Storable)
-
-data ObjectType = JSON | Raw
-    deriving (Show, Eq)
 
 deqMany :: DPIQueue -> Int -> IO DPIMsgProps
 deqMany dpiQueue numProps = do
@@ -167,8 +171,8 @@ foreign import ccall unsafe "dpiQueue_release"
     DPIQueue ->
     IO CInt
 
-genJSONQueue :: Connection -> String -> IO DPIQueue
-genJSONQueue (Connection fptr) queueName = do
+genQueueJSON :: Connection -> String -> IO DPIQueue
+genQueueJSON (Connection fptr) queueName = do
   withForeignPtr fptr $ \conn -> do
     alloca $ \dpiQueuePtr -> do
       withCStringLen queueName $ \(queueNameC , fromIntegral -> queueNameLen) -> do
@@ -202,14 +206,20 @@ foreign import ccall unsafe "dpiConn_newMsgProps"
     Ptr DPIMsgProps ->
     IO CInt
 
--- For now, Passing objectType will not work :( use setPayLoadType.
 genQueue :: Connection -> String -> IO DPIQueue
 genQueue (Connection fptr) queueName = do
   withForeignPtr fptr $ \conn -> do
     alloca $ \dpiQueuePtr -> do
       withCStringLen queueName $ \(queueNameC , fromIntegral -> queueNameLen) -> do
         throwOracleError =<< dpiConn_newQueue conn queueNameC queueNameLen nullPtr dpiQueuePtr
-        -- TODO: Accomodate ObjectType
+        peek dpiQueuePtr
+
+genQueueObject :: Connection -> String -> DPIObjectType -> IO DPIQueue
+genQueueObject (Connection fptr) queueName (DPIObjectType objectType) = do
+  withForeignPtr fptr $ \conn -> do
+    alloca $ \dpiQueuePtr -> do
+      withCStringLen queueName $ \(queueNameC , fromIntegral -> queueNameLen) -> do
+        throwOracleError =<< dpiConn_newQueue conn queueNameC queueNameLen objectType dpiQueuePtr
         peek dpiQueuePtr
 
 foreign import ccall unsafe "dpiConn_newQueue"
@@ -221,7 +231,7 @@ foreign import ccall unsafe "dpiConn_newQueue"
     -- | name Length
     CUInt ->
     -- | dpiObjectType *
-    Ptr () ->
+    Ptr DPIObjectType ->
     -- | dpiQueue **
     Ptr DPIQueue ->
     IO CInt
@@ -256,7 +266,6 @@ foreign import ccall unsafe "dpiMsgProps_getDelay"
     Ptr CUInt ->
     IO CInt
 
-
 {-
 This function internally calls getPayLoad which either returns payLoad in either Object or in bytes.
 Hence, the result might be null.
@@ -271,13 +280,21 @@ getMsgPropsPayLoadBytes dpiMsgProps = do
             if cStr == nullPtr 
               then return Nothing
             else Just . BSC.pack <$> peekCString cStr
-      
+
+getMsgPropsPayLoadObject :: DPIMsgProps -> IO (Maybe DPIObject)
+getMsgPropsPayLoadObject dpiMsgProps = 
+  alloca $ \dpiObjectPtr -> do
+        throwOracleError =<< dpiMsgProps_getPayload dpiMsgProps dpiObjectPtr nullPtr nullPtr
+        if dpiObjectPtr  == nullPtr
+            then return Nothing
+        else Just <$> peek dpiObjectPtr 
+
 foreign import ccall unsafe "dpiMsgProps_getPayload"
   dpiMsgProps_getPayload ::
     -- | dpiMsgProps *
     DPIMsgProps ->
     -- | dpiObject **
-    Ptr  DPIObjectType ->
+    Ptr DPIObject ->
     -- | const char ** value
     Ptr CString ->
     -- | valueLength
@@ -313,6 +330,18 @@ foreign import ccall unsafe "dpiMsgProps_setPayloadBytes"
     CUInt ->
     IO CInt
 
+setMsgPropsPayLoadObject :: DPIMsgProps -> DPIObject-> IO ()
+setMsgPropsPayLoadObject dpiMsgProps obj = do
+  throwOracleError =<< dpiMsgProps_setPayloadObject dpiMsgProps obj
+
+foreign import ccall unsafe "dpiMsgProps_setPayloadObject"
+    dpiMsgProps_setPayloadObject ::
+    -- | dpiMsgProps *
+    DPIMsgProps ->
+    -- | dpiObject* obj
+    DPIObject ->
+    IO CInt
+
 setMsgPropsPayLoadJSON :: DPIMsgProps -> DPIJson -> IO ()
 setMsgPropsPayLoadJSON dpiMsgProps payLoadJson = do
   throwOracleError =<< dpiMsgProps_setPayloadJson dpiMsgProps payLoadJson
@@ -323,4 +352,56 @@ foreign import ccall unsafe "dpiMsgProps_setPayloadJson"
     DPIMsgProps ->
     -- | dpiJson * 
     DPIJson ->
+    IO CInt
+
+objectAppendElement :: forall a. (ToField a) => DPIObject -> a -> IO ()
+objectAppendElement obj val = do
+    dataValue <- toField val
+    let dataIsNull = case dataValue of
+                            AsNull -> 1
+                            _ -> 0
+    alloca $ \dpiDataPtr -> do
+      let dpiData = DPIData{..}
+      poke dpiDataPtr (dpiData :: DPIData WriteBuffer)
+      throwOracleError =<< 
+        dpiObject_appendElement 
+            obj 
+            (dpiNativeTypeToUInt (toDPINativeType (Proxy @a))) 
+            (dpiDataPtr :: Ptr (DPIData WriteBuffer))
+
+foreign import ccall unsafe "dpiObject_appendElement"
+    dpiObject_appendElement ::
+    -- | dpiObject *
+    DPIObject ->
+    -- | dpiNativeTypeNum
+    CUInt ->
+    -- | dpiData* val
+    Ptr (DPIData WriteBuffer) ->
+    IO CInt
+
+getObjectElementByIdx 
+    :: forall a. (FromField a) => 
+    DPIObject -> 
+    Int -> 
+    IO a
+getObjectElementByIdx obj idx = do
+    alloca $ \dpiDataPtr -> do
+      throwOracleError =<< 
+        dpiObject_getElementExistsByIndex 
+            obj 
+            (CInt $ fromIntegral idx)
+            (dpiNativeTypeToUInt (fromDPINativeType (Proxy @a)))
+            dpiDataPtr
+      readDPIDataBuffer (fromField @a) dpiDataPtr
+
+foreign import ccall unsafe "dpiObject_getElementExistsByIndex"
+    dpiObject_getElementExistsByIndex ::
+    -- | dpiObject *
+    DPIObject ->
+    -- | int32_t index
+    CInt ->
+    -- | dpiNativeTypeNum
+    CUInt ->
+    -- | dpiData *
+    Ptr (DPIData ReadBuffer) ->
     IO CInt

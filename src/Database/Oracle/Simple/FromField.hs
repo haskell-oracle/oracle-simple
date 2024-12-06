@@ -2,12 +2,19 @@
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE TypeApplications #-}
+{-# LANGUAGE RankNTypes #-}
 
 module Database.Oracle.Simple.FromField
   ( FieldParser (..),
     FromField (..),
     ReadDPIBuffer,
     dpiTimeStampToUTCTime,
+    getInt64,
+    getFloat, 
+    getDouble,
+    getString,
+    getBool,
+    getTimestamp,
   )
 where
 

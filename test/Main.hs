@@ -395,12 +395,13 @@ spec pool = do
         queue <- genQueue conn "test_queue"
         queueRelease queue
         -- No exception implies success
+        
       it "should set and get a msgProp payload" $ \conn -> do
         msgProps <- genMsgProps conn
         setMsgPropsPayLoadBytes msgProps (BSC.pack "Hello from Haskell!")
         payload <- getMsgPropsPayLoadBytes msgProps
         payload `shouldBe` Just "Hello from Haskell!"
-      it "should enque and deque msg prop from queue" $ \conn -> do
+      it "should enque and deque msg prop from queue for bytes" $ \conn -> do
         void $ execute_ conn "\
         \BEGIN\
          \ DBMS_AQADM.CREATE_QUEUE_TABLE(\
@@ -423,6 +424,18 @@ spec pool = do
         payload <- getMsgPropsPayLoadBytes newMsgProps
         payload `shouldBe` Just "Hello from Haskell!"
         queueRelease queue
+        void $ execute_ conn "\
+        \BEGIN\
+         \ DBMS_AQADM.STOP_QUEUE(\
+           \  queue_name => 'TEST_QUEUE'\
+          \);\
+         \ DBMS_AQADM.DROP_QUEUE(\
+          \   queue_name => 'TEST_QUEUE'\
+         \ );\
+         \ DBMS_AQADM.DROP_QUEUE_TABLE(\
+           \  queue_table        => 'TEST_QUEUE_TABLE'\
+         \ );\
+        \END;"
   where
     handleOracleError action = Exc.try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())
 
