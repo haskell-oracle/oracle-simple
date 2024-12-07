@@ -45,8 +45,13 @@ module Database.Oracle.Simple.Internal
     ErrorInfo (..),
     VersionInfo (..),
     DPIJson (..),
+    DPIObjectType (..),
+    DPIObject (..),
     genJSON,
+    genObject,
+    getObjectType,
     renderErrorInfo,
+    releaseObject,
     ping,
     fetch,
     close,
@@ -78,6 +83,7 @@ module Database.Oracle.Simple.Internal
     dpiData_getTimestamp,
     dpiConn_close_finalizer,
     dpiConn_release_finalizer,
+    dpiNativeTypeToUInt,
   )
 where
 
@@ -122,6 +128,14 @@ newtype DPIShardingKeyColumn = DPIShardingKeyColumn (Ptr DPIShardingKeyColumn)
   deriving newtype (Storable)
 
 newtype DPIJson = DPIJson (Ptr DPIJson)
+  deriving (Show, Eq)
+  deriving newtype (Storable)
+
+newtype DPIObjectType = DPIObjectType (Ptr DPIObjectType)
+  deriving (Show, Eq)
+  deriving newtype (Storable)
+
+newtype DPIObject = DPIObject (Ptr DPIObject)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
@@ -1773,3 +1787,48 @@ foreign import ccall unsafe "dpiConn_newJson"
     -- | dpiJSON **
     Ptr DPIJson ->
     IO CInt
+
+getObjectType :: Connection -> String -> IO DPIObjectType
+getObjectType (Connection fptr) objectName = do
+  withForeignPtr fptr $ \conn -> do
+    withCStringLen objectName $ \(objectNameC, fromIntegral -> objectNameLen) -> do
+      alloca $ \objectTypePtr -> do
+        throwOracleError =<< dpiConn_getObjectType conn objectNameC objectNameLen objectTypePtr
+        peek objectTypePtr
+
+foreign import ccall unsafe "dpiConn_getObjectType"
+    dpiConn_getObjectType ::
+    -- | dpiConn *
+    Ptr DPIConn ->
+    -- | char * name
+    CString ->
+    -- | cuint32_t nameLength
+    CUInt -> 
+    -- | dpiObjectType ** objType
+    Ptr DPIObjectType ->
+    IO CInt
+
+genObject :: DPIObjectType -> IO DPIObject
+genObject objType = do
+  alloca $ \objectPtr -> do
+    throwOracleError =<< dpiObjectType_createObject objType objectPtr
+    peek objectPtr
+
+foreign import ccall unsafe "dpiObjectType_createObject"
+    dpiObjectType_createObject ::
+    -- | dpiObjectType *
+    DPIObjectType ->
+    -- | dpiObject ** obj
+    Ptr DPIObject ->
+    IO CInt
+
+releaseObject :: DPIObject -> IO ()
+releaseObject obj = do
+  throwOracleError =<< dpiObject_release obj
+
+foreign import ccall unsafe "dpiObject_release"
+    dpiObject_release ::
+    -- | dpiObject *
+    DPIObject ->
+    IO CInt
+
