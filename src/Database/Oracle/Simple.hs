@@ -11,3 +11,4 @@ import Database.Oracle.Simple.ToField as Export
 import Database.Oracle.Simple.ToRow as Export
 import Database.Oracle.Simple.Transaction as Export
 import Database.Oracle.Simple.Queue as Export
+import Database.Oracle.Simple.Object as Export

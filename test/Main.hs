@@ -21,7 +21,7 @@ import Hedgehog ((===))
 import qualified Hedgehog as HH
 import qualified Hedgehog.Gen as Gen
 import qualified Hedgehog.Range as Range
-import Test.Hspec (Spec, around, describe, hspec, it, shouldBe)
+import Test.Hspec (Spec, around, describe, hspec, it, shouldBe, expectationFailure)
 import Test.Hspec.Hedgehog (hedgehog)
 import Foreign (peek, Storable, with, nullFunPtr, nullPtr)
 import Foreign.C.Types (CLong(..), CUInt(..), CInt(..))
@@ -261,7 +261,7 @@ spec pool = do
             result `shouldBe` versionInfo
         it "DPIXid" $ \_ -> do
             someCString <- newCString "hello"
-            let dpixid = DPIXid { 
+            let dpixid = DPIXid {
                 dpixFormatId = CLong 1
               , dpixGlobalTransactionId = someCString
               , dpixGlobalTransactionIdLength = CUInt 2
@@ -332,8 +332,8 @@ spec pool = do
             result `shouldBe` connectionCreateParams
         it "DPICommonCreateParams" $ \_ -> do
             someCString <- newCString "hello"
-            let dPICommonCreateParams = DPICommonCreateParams { 
-              createMode = DPI_MODE_CREATE_DEFAULT 
+            let dPICommonCreateParams = DPICommonCreateParams {
+              createMode = DPI_MODE_CREATE_DEFAULT
             , encoding = someCString
             , nencoding = someCString
             , edition = someCString
@@ -368,7 +368,7 @@ spec pool = do
           , nameLength = CUInt 1
           , value = someCString
           , valueLength = CUInt 1
-          } 
+          }
           result <- roundTripStorable dPIAppContext
           result `shouldBe` dPIAppContext
         it "DPIContextCreateParams" $ \_ -> do
@@ -385,7 +385,7 @@ spec pool = do
         it "DPIJsonNode" $ \_ -> do
           let dPIJsonNode = DPIJsonNode {
                 djnOracleTypeNumber = DPI_ORACLE_TYPE_NONE
-               , djnNativeTypeNumber = DPI_NATIVE_TYPE_INT64 
+               , djnNativeTypeNumber = DPI_NATIVE_TYPE_INT64
                , djnValue = nullPtr
             }
           result <- roundTripStorable dPIJsonNode
@@ -395,47 +395,148 @@ spec pool = do
         queue <- genQueue conn "test_queue"
         queueRelease queue
         -- No exception implies success
-        
+
       it "should set and get a msgProp payload" $ \conn -> do
         msgProps <- genMsgProps conn
         setMsgPropsPayLoadBytes msgProps (BSC.pack "Hello from Haskell!")
         payload <- getMsgPropsPayLoadBytes msgProps
         payload `shouldBe` Just "Hello from Haskell!"
+
       it "should enque and deque msg prop from queue for bytes" $ \conn -> do
-        void $ execute_ conn "\
-        \BEGIN\
-         \ DBMS_AQADM.CREATE_QUEUE_TABLE(\
-           \  queue_table        => 'TEST_QUEUE_TABLE',\
-           \  queue_payload_type => 'RAW'\
-         \ );\
-         \ DBMS_AQADM.CREATE_QUEUE(\
-          \   queue_name => 'TEST_QUEUE',\
-          \   queue_table => 'TEST_QUEUE_TABLE'\
-         \ );\
-         \ DBMS_AQADM.START_QUEUE(\
-           \  queue_name => 'TEST_QUEUE'\
-          \);\
-        \END;"
+        void $ execute_ conn $ unlines [
+          "BEGIN"
+         , "DBMS_AQADM.CREATE_QUEUE_TABLE("
+         ,  "queue_table        => 'TEST_QUEUE_TABLE',"
+         ,  "queue_payload_type => 'RAW'"
+         ,");"
+         ,"DBMS_AQADM.CREATE_QUEUE("
+         , "queue_name => 'TEST_QUEUE',"
+         , "queue_table => 'TEST_QUEUE_TABLE'"
+         ,   ");"
+         ,  "DBMS_AQADM.START_QUEUE("
+         ,  "queue_name => 'TEST_QUEUE'"
+         , ");"
+         , "END;" ]
         msgProps <- genMsgProps conn
         setMsgPropsPayLoadBytes msgProps (BSC.pack "Hello from Haskell!")
         queue <- genQueue conn "TEST_QUEUE"
         void $ enqOne queue msgProps
-        newMsgProps <- deqOne queue 
+        newMsgProps <- deqOne queue
         payload <- getMsgPropsPayLoadBytes newMsgProps
         payload `shouldBe` Just "Hello from Haskell!"
         queueRelease queue
-        void $ execute_ conn "\
-        \BEGIN\
-         \ DBMS_AQADM.STOP_QUEUE(\
-           \  queue_name => 'TEST_QUEUE'\
-          \);\
-         \ DBMS_AQADM.DROP_QUEUE(\
-          \   queue_name => 'TEST_QUEUE'\
-         \ );\
-         \ DBMS_AQADM.DROP_QUEUE_TABLE(\
-           \  queue_table        => 'TEST_QUEUE_TABLE'\
-         \ );\
-        \END;"
+        void $ execute_ conn $ unlines [
+         "BEGIN"
+            , "DBMS_AQADM.STOP_QUEUE("
+            , "queue_name => 'TEST_QUEUE'"
+            ,   ");"
+            ,  "DBMS_AQADM.DROP_QUEUE("
+            ,  "queue_name => 'TEST_QUEUE'"
+            ,  ");"
+            ,  "DBMS_AQADM.DROP_QUEUE_TABLE("
+            ,  "queue_table        => 'TEST_QUEUE_TABLE'"
+            ,  ");"
+            , "END;"]
+
+      it "should enque and deque msg prop from queue for object" $ \conn -> do
+        void $ execute_ conn $ "CREATE OR REPLACE TYPE MessageType AS OBJECT"
+                                    <> "(id NUMBER,text VARCHAR2(100));"
+        void $ execute_ conn $ unlines [
+          "BEGIN"
+         , "DBMS_AQADM.CREATE_QUEUE_TABLE("
+         ,  "queue_table        => 'TEST_QUEUE_TABLE',"
+         ,  "queue_payload_type => 'MessageType'"
+         ,");"
+         ,"DBMS_AQADM.CREATE_QUEUE("
+         , "queue_name => 'TEST_QUEUE',"
+         , "queue_table => 'TEST_QUEUE_TABLE'"
+         ,   ");"
+         ,  "DBMS_AQADM.START_QUEUE("
+         ,  "queue_name => 'TEST_QUEUE'"
+         , ");"
+         , "END;" ]
+
+        msgProps <- genMsgProps conn
+        objType  <- getObjectType conn "messageType"
+        obj      <- genObject objType
+        objInfo  <- getObjectInfo objType
+        queue <- genQueueObject conn "test_queue" objType
+        [attr1, attr2] <- getObjAttributes objType
+
+        setObjAttribute obj attr1 (1 :: Int)
+        setObjAttribute obj attr2 ("Hello from Haskell" :: String)
+
+        numAttributes objInfo `shouldBe` 2
+        setMsgPropsPayLoadObject msgProps obj
+
+        enqOne queue msgProps
+        newMsgProps <- deqOne queue
+
+        mObj <- getMsgPropsPayLoadObject newMsgProps
+        case mObj of
+          Nothing -> expectationFailure "MsgProp not found"
+          Just newObj -> do
+            val1 <- getObjAttribute newObj attr1
+            val2 <- getObjAttribute newObj attr2
+            val1 `shouldBe` (1 :: Int)
+            val2 `shouldBe` ("Hello from Haskell" :: String)
+
+        void $ execute_ conn $ unlines [
+         "BEGIN"
+            , "DBMS_AQADM.STOP_QUEUE("
+            , "queue_name => 'TEST_QUEUE'"
+            ,   ");"
+            ,  "DBMS_AQADM.DROP_QUEUE("
+            ,  "queue_name => 'TEST_QUEUE'"
+            ,  ");"
+            ,  "DBMS_AQADM.DROP_QUEUE_TABLE("
+            ,  "queue_table => 'TEST_QUEUE_TABLE'"
+            ,  ");"
+            , "END;"]
+
+      it "should enque and deque msg prop from queue for json" $ \conn -> do
+        void $ execute_ conn $ unlines [
+          "BEGIN"
+         , "DBMS_AQADM.CREATE_QUEUE_TABLE("
+         ,  "queue_table        => 'TEST_QUEUE_TABLE',"
+         ,  "queue_payload_type => 'JSON'"
+         ,");"
+         ,"DBMS_AQADM.CREATE_QUEUE("
+         , "queue_name => 'TEST_QUEUE',"
+         , "queue_table => 'TEST_QUEUE_TABLE'"
+         ,   ");"
+         ,  "DBMS_AQADM.START_QUEUE("
+         ,  "queue_name => 'TEST_QUEUE'"
+         , ");"
+         , "END;" ]
+        let jsonData = JsonData "str" 123 True Nothing ["hello", "world"] That 3.14
+
+        msgProps <- genMsgProps conn
+        queue <- genQueueJSON conn "TEST_QUEUE"
+
+        setMsgPropsPayLoadJSON conn msgProps jsonData
+        enqOne queue msgProps
+        newMsgProps <- deqOne queue
+
+        mJson <- getMsgPropsPayLoadJson newMsgProps
+
+        case mJson of
+          Nothing -> expectationFailure "Got Nothing"
+          Just newJson -> do
+            newJson `shouldBe` jsonData
+
+        void $ execute_ conn $ unlines [
+         "BEGIN"
+            , "DBMS_AQADM.STOP_QUEUE("
+            , "queue_name => 'TEST_QUEUE'"
+            ,   ");"
+            ,  "DBMS_AQADM.DROP_QUEUE("
+            ,  "queue_name => 'TEST_QUEUE'"
+            ,  ");"
+            ,  "DBMS_AQADM.DROP_QUEUE_TABLE("
+            ,  "queue_table => 'TEST_QUEUE_TABLE'"
+            ,  ");"
+            , "END;"]
   where
     handleOracleError action = Exc.try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())
 
