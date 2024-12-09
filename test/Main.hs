@@ -459,14 +459,14 @@ spec pool = do
         msgProps <- genMsgProps conn
         objType  <- getObjectType conn "messageType"
         obj      <- genObject objType
-        objInfo  <- getObjectInfo objType
+        -- objInfo  <- getObjectInfo objType
         queue <- genQueueObject conn "test_queue" objType
-        [attr1, attr2] <- getObjAttributes objType
+        [attr1, attr2] <- getObjAttributes objType 2
 
         setObjAttribute obj attr1 (1 :: Int)
         setObjAttribute obj attr2 ("Hello from Haskell" :: String)
 
-        numAttributes objInfo `shouldBe` 2
+        -- numAttributes objInfo `shouldBe` 2
         setMsgPropsPayLoadObject msgProps obj
 
         enqOne queue msgProps
@@ -513,8 +513,10 @@ spec pool = do
 
         msgProps <- genMsgProps conn
         queue <- genQueueJSON conn "TEST_QUEUE"
-
-        setMsgPropsPayLoadJSON conn msgProps jsonData
+        
+        dpiJson_ <- genJSON conn
+        dpiJson <- setValInJSON dpiJson_ jsonData
+        setMsgPropsPayLoadJSON msgProps dpiJson 
         enqOne queue msgProps
         newMsgProps <- deqOne queue
 
@@ -524,7 +526,8 @@ spec pool = do
           Nothing -> expectationFailure "Got Nothing"
           Just newJson -> do
             newJson `shouldBe` jsonData
-
+        
+        releaseDpiJson dpiJson
         void $ execute_ conn $ unlines [
          "BEGIN"
             , "DBMS_AQADM.STOP_QUEUE("

@@ -139,12 +139,12 @@ foreign import ccall unsafe "dpiObject_setAttributeValue"
     Ptr (DPIData WriteBuffer) ->
     IO CInt
 
-getObjAttributes :: DPIObjectType -> IO [DPIObjectAttr]
-getObjAttributes objType = do
-  objInfo <- getObjectInfo objType
+getObjAttributes :: DPIObjectType -> Int -> IO [DPIObjectAttr]
+getObjAttributes objType n = do
+  -- objInfo <- getObjectInfo objType
   alloca $ \objAttrsPtr -> do
-    throwOracleError =<< dpiObjectType_getAttributes objType (numAttributes objInfo) objAttrsPtr
-    peekArray (fromIntegral $ numAttributes objInfo) objAttrsPtr
+    throwOracleError =<< dpiObjectType_getAttributes objType (fromIntegral n) objAttrsPtr
+    peekArray n objAttrsPtr
 
 foreign import ccall unsafe "dpiObjectType_getAttributes"
     dpiObjectType_getAttributes ::
