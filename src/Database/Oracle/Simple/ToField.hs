@@ -18,6 +18,9 @@ import Numeric.Natural (Natural)
 
 import Database.Oracle.Simple.Internal
 
+-- | This class provides a way to write values of any type to a database buffer,
+-- | allowing you to convert complex data types into something that can be written
+-- | directly to the database.
 class ToField a where
   toDPINativeType :: Proxy a -> DPINativeType
   -- ^ The DPI native type of the value written to the buffer.
@@ -70,6 +73,7 @@ instance ToField UTCTime where
   toDPINativeType _ = DPI_NATIVE_TYPE_TIMESTAMP
   toField utcTime = pure $ AsTimestamp (utcTimeToDPITimestamp utcTime)
 
+-- | Convert a UTCTime value to a DPITimestamp.
 utcTimeToDPITimestamp :: UTCTime -> DPITimestamp
 utcTimeToDPITimestamp utcTime = dpiTimeStampToUTCDPITimeStamp dpiTs
   where

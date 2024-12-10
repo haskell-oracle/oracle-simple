@@ -76,9 +76,13 @@ instance (Aeson.FromJSON a) => FromField (AesonField a) where
   -- This means we need to build an aeson Value from the top-level DPIJsonNode.
   fromField = coerce (FieldParser (getJson @a))
 
+-- | Reads a JSON object from a DPI buffer.
+-- This function is parameterized over any type that has an 'Aeson.FromJSON' instance.
 getJson :: (Aeson.FromJSON a) => ReadDPIBuffer a
 getJson = parseJson <=< peek <=< dpiJson_getValue <=< dpiData_getJson
 
+-- | Parses a 'DPIJsonNode' into a Haskell value.
+-- This function requires a type with an 'Aeson.FromJSON' instance to convert the JSON node.
 parseJson :: Aeson.FromJSON b => DPIJsonNode -> IO b
 parseJson topNode = do
   aesonValue <- buildValue topNode
@@ -126,15 +130,20 @@ buildValue (DPIJsonNode _ DPI_NATIVE_TYPE_NULL _) = pure Aeson.Null
 -- All other DPI native types
 buildValue (DPIJsonNode _ nativeType _) = throwIO $ UnsupportedDPINativeType nativeType
 
+-- | Represents a JSON object in the Oracle database.
+-- The 'DPIJson' type wraps a pointer to a DPI JSON structure.
 newtype DPIJson = DPIJson (Ptr DPIJson)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | Represents a JSON node in Oracle, including type numbers and value buffer.
+-- The 'DPIJsonNode' type is used for handling JSON data within Oracle operations.
 data DPIJsonNode = DPIJsonNode
-  { djnOracleTypeNumber :: DPIOracleType
-  , djnNativeTypeNumber :: DPINativeType
-  , djnValue :: Ptr ReadBuffer
-  } deriving (Eq, Show)
+  { djnOracleTypeNumber :: DPIOracleType  -- ^ Oracle's type number for the JSON node.
+  , djnNativeTypeNumber :: DPINativeType  -- ^ Native type number for the JSON node.
+  , djnValue :: Ptr ReadBuffer            -- ^ Pointer to the buffer storing the node's value.
+  }
+  deriving (Eq, Show)
 
 instance Storable DPIJsonNode where
     sizeOf _ = sizeOf (undefined :: DPIOracleType)
@@ -180,6 +189,8 @@ foreign import ccall "dpiData_getJson"
 foreign import ccall "dpiJson_getValue"
   dpiJson_getValue' :: DPIJson -> CUInt -> Ptr (Ptr DPIJsonNode) -> IO CInt
 
+-- | Retrieves the value of a JSON object as a pointer to a 'DPIJsonNode'.
+-- This function performs an IO action to extract the JSON node from a 'DPIJson'.
 dpiJson_getValue :: DPIJson -> IO (Ptr DPIJsonNode)
 dpiJson_getValue dpiJson = alloca $ \ptr -> do
   let dpiJsonOptions_numberAsString = 0x01 -- return data from numeric fields as DPIBytes
@@ -201,6 +212,9 @@ foreign import ccall "dpiDataBuffer_getAsBoolean"
 foreign import ccall "dpiDataBuffer_getAsDouble"
   dpiDataBuffer_getAsDouble :: Ptr ReadBuffer -> IO CDouble
 
+-- | Represents errors that may occur during JSON decoding.
+-- 'JsonDecodeError' includes specific errors for invalid numbers,
+-- parsing errors, and unsupported native types.
 data JsonDecodeError = InvalidNumber String | ParseError String | UnsupportedDPINativeType DPINativeType
   deriving (Show)
 

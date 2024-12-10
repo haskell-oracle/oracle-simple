@@ -98,44 +98,61 @@ import GHC.Generics (Generic)
 import GHC.TypeLits (Natural)
 import System.IO.Unsafe (unsafePerformIO)
 
+-- | A newtype wrapper for a pointer to a DPI statement.
+-- This type is used to manage the lifecycle and operations on database statements.
 newtype DPIStmt = DPIStmt (Ptr DPIStmt)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | A newtype wrapper for a pointer to a DPI connection.
+-- This type ensures type safety when working with DPI connection pointers.
 newtype DPIConn = DPIConn (Ptr DPIConn)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | Represents a foreign connection using a 'DPIConn' pointer wrapped in a 'ForeignPtr'.
+-- This type manages memory automatically, ensuring proper cleanup.
 newtype Connection = Connection (ForeignPtr DPIConn)
   deriving (Show, Eq)
 
+-- | A newtype wrapper for a pointer to a DPI pool.
+-- This type is used for managing database connection pools within the application.
 newtype DPIPool = DPIPool (Ptr DPIPool)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | A newtype wrapper for a pointer to a DPI context.
+-- The DPI context manages the overall state and configuration for DPI operations.
 newtype DPIContext = DPIContext (Ptr DPIContext)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | A newtype wrapper for a pointer to a DPI sharding key column.
+-- This type is used when working with sharded databases and their associated keys.
 newtype DPIShardingKeyColumn = DPIShardingKeyColumn (Ptr DPIShardingKeyColumn)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | Represents additional parameters for creating a connection pool.
+-- The 'AdditionalConnectionParams' data type includes settings such as session counts,
+-- timeouts, and modes.
 data AdditionalConnectionParams = AdditionalConnectionParams
-  { minSessions :: Natural
-  , maxSessions :: Natural
-  , sessionIncrement :: Natural
-  , pingInterval :: Natural
-  , pingTimeout :: Natural
-  , homogeneous :: Natural
-  , getMode :: DPIPoolGetMode
-  , timeout :: Natural
-  , waitTimeout :: Natural
-  , maxLifetimeSession :: Natural
-  , maxSessionsPerShard :: Natural
+  { minSessions :: Natural            -- ^ Minimum number of sessions in the pool.
+  , maxSessions :: Natural            -- ^ Maximum number of sessions in the pool.
+  , sessionIncrement :: Natural       -- ^ Number of sessions to add when expanding the pool.
+  , pingInterval :: Natural           -- ^ Interval at which to ping sessions to keep them alive.
+  , pingTimeout :: Natural            -- ^ Timeout for pinging sessions.
+  , homogeneous :: Natural            -- ^ Indicates whether the pool is homogeneous.
+  , getMode :: DPIPoolGetMode         -- ^ Mode for obtaining sessions from the pool.
+  , timeout :: Natural                -- ^ Timeout duration for sessions.
+  , waitTimeout :: Natural            -- ^ Timeout for waiting to obtain a session.
+  , maxLifetimeSession :: Natural     -- ^ Maximum lifetime of a session in the pool.
+  , maxSessionsPerShard :: Natural    -- ^ Maximum number of sessions per shard.
   }
   deriving (Eq, Ord, Show)
 
+-- | Default parameters for additional connection settings.
+-- This provides a default configuration for connections that can be modified as needed.
 defaultAdditionalConnectionParams :: AdditionalConnectionParams
 defaultAdditionalConnectionParams =
   AdditionalConnectionParams
@@ -152,11 +169,12 @@ defaultAdditionalConnectionParams =
     , maxSessionsPerShard = 0
     }
 
+-- | Connection parameters type
 data ConnectionParams = ConnectionParams
-  { user :: String
-  , pass :: String
-  , connString :: String
-  , additionalParams :: Maybe AdditionalConnectionParams
+  { user :: String -- ^ name of the user used for authenticating the user
+  , pass :: String -- ^ password to use for authenticating the user
+  , connString :: String -- ^ connect string identifying the database to which a connection is to be established,
+  , additionalParams :: Maybe AdditionalConnectionParams -- ^ optional additional parameters
   }
   deriving (Eq, Ord, Show)
 
@@ -261,6 +279,8 @@ instance Storable DPIAuthMode where
     poke (castPtr ptr) (toDPIAuthMode mode)
 
 -- typedef uint32_t dpiPurity;
+-- | Indicates the purity level of an Oracle session.
+-- 'DPIPurity' is used to specify whether a session should be default or new.
 data DPIPurity
   = DPI_PURITY_DEFAULT
   | DPI_PURITY_NEW
@@ -287,9 +307,15 @@ data DPIModeConnClose
   | DPI_MODE_CONN_CLOSE_RETAG -- 0x0002
   deriving (Show, Eq)
 
+-- | A finalizer for closing a DPI connection.
+-- This function is called to safely close and clean up resources associated
+-- with a DPI connection.
 foreign import ccall "&finalize_connection_default"
   dpiConn_close_finalizer :: FunPtr (Ptr DPIConn -> IO ())
 
+-- | A finalizer for releasing a DPI connection.
+-- Ensures that the allocated resources for a connection are properly
+-- released when it is no longer needed.
 foreign import ccall "&dpiConn_release"
   dpiConn_release_finalizer :: FunPtr (Ptr DPIConn -> IO ())
 
@@ -309,6 +335,8 @@ foreign import ccall "dpiContext_initPoolCreateParams"
     Ptr DPIPoolCreateParams ->
     IO Int
 
+-- | Utilizes default pool creation parameters to execute an action.
+-- This is useful for working with connection pools using predefined settings.
 withDefaultPoolCreateParams :: (Ptr DPIPoolCreateParams -> IO a) -> IO a
 withDefaultPoolCreateParams f = do
   ctx <- readIORef globalContext
@@ -318,25 +346,28 @@ withDefaultPoolCreateParams f = do
       error $ "pool create params status wasn't 0" <> show status
     f poolCreateParamsPtr
 
+-- | Parameters for creating a DPI pool.
+-- The 'DPIPoolCreateParams' data type includes various settings for pool creation,
+-- such as session limits, timeouts, and encoding details.
 data DPIPoolCreateParams = DPIPoolCreateParams
-  { dpi_minSessions :: CUInt
-  , dpi_maxSessions :: CUInt
-  , dpi_sessionIncrement :: CUInt
-  , dpi_pingInterval :: CInt
-  , dpi_pingTimeout :: CInt
-  , dpi_homogeneous :: CInt
-  , dpi_externalAuth :: CInt
-  , dpi_getMode :: DPIPoolGetMode
-  , dpi_outPoolName :: CString
-  , dpi_outPoolNameLength :: CUInt
-  , dpi_timeout :: CUInt
-  , dpi_waitTimeout :: CUInt
-  , dpi_maxLifetimeSession :: CUInt
-  , dpi_plsqlFixupCallback :: CString
-  , dpi_plsqlFixupCallbackLength :: CUInt
-  , dpi_maxSessionsPerShard :: CUInt
-  , dpi_accessTokenCallback :: FunPtr ()
-  , dpi_accessTokenCallbackContext :: Ptr ()
+  { dpi_minSessions :: CUInt               -- ^ Minimum number of sessions in the pool.
+  , dpi_maxSessions :: CUInt               -- ^ Maximum number of sessions in the pool.
+  , dpi_sessionIncrement :: CUInt          -- ^ Increment for expanding the pool.
+  , dpi_pingInterval :: CInt               -- ^ Interval for pinging sessions.
+  , dpi_pingTimeout :: CInt                -- ^ Timeout for session pings.
+  , dpi_homogeneous :: CInt                -- ^ Homogeneity of the pool.
+  , dpi_externalAuth :: CInt               -- ^ Use of external authentication.
+  , dpi_getMode :: DPIPoolGetMode          -- ^ Session retrieval mode.
+  , dpi_outPoolName :: CString             -- ^ Name of the pool for output.
+  , dpi_outPoolNameLength :: CUInt         -- ^ Length of the pool name.
+  , dpi_timeout :: CUInt                   -- ^ Session timeout duration.
+  , dpi_waitTimeout :: CUInt               -- ^ Timeout for waiting for a session.
+  , dpi_maxLifetimeSession :: CUInt        -- ^ Maximum session lifetime.
+  , dpi_plsqlFixupCallback :: CString      -- ^ PL/SQL fixup callback.
+  , dpi_plsqlFixupCallbackLength :: CUInt  -- ^ Length of the PL/SQL fixup callback.
+  , dpi_maxSessionsPerShard :: CUInt       -- ^ Maximum sessions per shard.
+  , dpi_accessTokenCallback :: FunPtr ()   -- ^ Access token callback function.
+  , dpi_accessTokenCallbackContext :: Ptr () -- ^ Context for the access token callback.
   }
   deriving (Show, Eq)
 
@@ -459,11 +490,13 @@ instance Storable DPIPoolCreateParams where
                  `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
                  `plusPtr` (2 * sizeOf (undefined :: CString))) dpi_accessTokenCallbackContext
 
+-- | Modes for obtaining connections from a connection pool.
+-- 'DPIPoolGetMode' specifies different strategies for retrieving a connection.
 data DPIPoolGetMode
-  = DPI_MODE_POOL_GET_FORCEGET
-  | DPI_MODE_POOL_GET_NOWAIT
-  | DPI_MODE_POOL_GET_TIMEDWAIT
-  | DPI_MODE_POOL_GET_WAIT
+  = DPI_MODE_POOL_GET_FORCEGET  -- ^ Forces obtaining a connection, regardless of wait time.
+  | DPI_MODE_POOL_GET_NOWAIT    -- ^ Attempts to get a connection without waiting.
+  | DPI_MODE_POOL_GET_TIMEDWAIT -- ^ Waits for a connection with a specified timeout.
+  | DPI_MODE_POOL_GET_WAIT      -- ^ Waits indefinitely for a connection.
   deriving (Show, Eq, Ord, Enum, Generic)
 
 toDPIPoolGetMode :: DPIPoolGetMode -> CUInt
@@ -490,29 +523,32 @@ instance Storable DPIPoolGetMode where
   poke ptr mode =
     poke (castPtr ptr) (toDPIPoolGetMode mode)
 
+-- | Parameters used for creating a database connection.
+-- 'ConnectionCreateParams' contains various fields to configure the connection,
+-- such as authentication mode, connection class, session purity, and sharding keys.
 data ConnectionCreateParams = ConnectionCreateParams
-  { authMode :: DPIAuthMode
-  , connectionClass :: CString
-  , connectionClassLength :: CUInt
-  , purity :: DPIPurity
-  , newPassword :: CString
-  , newPasswordLength :: CUInt
-  , appContenxt :: DPIAppContext
-  , numAppContext :: CUInt
-  , externalAuth :: CInt
-  , externalHandle :: Ptr ()
-  , pool :: DPIPool
-  , tag :: CString
-  , tagLength :: CUInt
-  , matchAnyTag :: CInt
-  , outTag :: CString
-  , outTagLength :: CUInt
-  , outTagFound :: CInt
-  , shardingKeyColumn :: DPIShardingKeyColumn
-  , numShardingKeyColumns :: Word8
-  , superShardingKeyColumns :: DPIShardingKeyColumn
-  , numSuperShardingKeyColumns :: Word8
-  , outNewSession :: CInt
+  { authMode :: DPIAuthMode             -- ^ Authentication mode to use for the connection.
+  , connectionClass :: CString          -- ^ Class of the connection as a C string.
+  , connectionClassLength :: CUInt      -- ^ Length of the connection class string.
+  , purity :: DPIPurity                 -- ^ Purity level for the session.
+  , newPassword :: CString              -- ^ New password for changing the existing one.
+  , newPasswordLength :: CUInt          -- ^ Length of the new password string.
+  , appContenxt :: DPIAppContext        -- ^ Application context to attach to the session.
+  , numAppContext :: CUInt              -- ^ Number of items in the application context.
+  , externalAuth :: CInt                -- ^ Flag to indicate external authentication.
+  , externalHandle :: Ptr ()            -- ^ Pointer to an external authentication handle.
+  , pool :: DPIPool                     -- ^ Connection pool for obtaining the connection.
+  , tag :: CString                      -- ^ Tag to use when retrieving a connection.
+  , tagLength :: CUInt                  -- ^ Length of the tag string.
+  , matchAnyTag :: CInt                 -- ^ Flag to indicate if any tag should match.
+  , outTag :: CString                   -- ^ Output tag after obtaining a connection.
+  , outTagLength :: CUInt               -- ^ Length of the output tag string.
+  , outTagFound :: CInt                 -- ^ Flag to indicate if the output tag was found.
+  , shardingKeyColumn :: DPIShardingKeyColumn -- ^ Sharding key column for the connection.
+  , numShardingKeyColumns :: Word8      -- ^ Number of sharding key columns.
+  , superShardingKeyColumns :: DPIShardingKeyColumn -- ^ Super sharding key column.
+  , numSuperShardingKeyColumns :: Word8 -- ^ Number of super sharding key columns.
+  , outNewSession :: CInt               -- ^ Flag to indicate if a new session was created.
   }
   deriving (Show, Eq)
 
@@ -811,16 +847,19 @@ instance Storable ConnectionCreateParams where
               `plusPtr` (2 * sizeOf (undefined :: DPIShardingKeyColumn))
               `plusPtr` (2 * sizeOf (undefined :: Word8))) outNewSession
 
+-- | Common parameters for creating DPI resources.
+-- The 'DPICommonCreateParams' data type includes settings like encoding, edition,
+-- and driver details.
 data DPICommonCreateParams = DPICommonCreateParams
-  { createMode :: DPICreateMode
-  , encoding :: CString
-  , nencoding :: CString
-  , edition :: CString
-  , editionLength :: CInt
-  , driverName :: CString
-  , driverNameLength :: CInt
-  , sodaMetadataCache :: Int
-  , stmtCacheSize :: CInt
+  { createMode :: DPICreateMode   -- ^ The mode for creating resources.
+  , encoding :: CString           -- ^ The character encoding to use.
+  , nencoding :: CString          -- ^ The national character encoding to use.
+  , edition :: CString            -- ^ The edition of the database.
+  , editionLength :: CInt         -- ^ The length of the edition string.
+  , driverName :: CString         -- ^ The name of the driver.
+  , driverNameLength :: CInt      -- ^ The length of the driver name.
+  , sodaMetadataCache :: Int      -- ^ Setting for SODA metadata caching.
+  , stmtCacheSize :: CInt         -- ^ Size of the statement cache.
   }
   deriving (Show, Eq)
 
@@ -922,6 +961,8 @@ foreign import ccall unsafe "context_create"
     Ptr ErrorInfo ->
     IO Int
 
+-- | A global context reference for DPI operations.
+-- This reference is used to manage the global state shared across DPI functions.
 globalContext :: IORef DPIContext
 {-# NOINLINE globalContext #-}
 globalContext = unsafePerformIO (newIORef =<< createContext)
@@ -946,6 +987,16 @@ createContext = do
         then peek contextPtr
         else (throwIO <=< toOracleError <=< peek) errorInfoPtr
 
+-- | Renders error information to the standard output or a designated error log.
+-- This function takes an 'ErrorInfo' structure and outputs its contents in a human-readable form.
+--
+-- /Arguments:/
+--
+-- * `ErrorInfo`: The error information to be rendered.
+--
+-- /Returns:/
+--
+-- An IO action to render the error information.
 renderErrorInfo :: ErrorInfo -> IO ()
 renderErrorInfo ErrorInfo {errorInfoCode, errorInfoMessage} = do
   putStrLn $ "Error code: " <> show errorInfoCode
@@ -953,21 +1004,25 @@ renderErrorInfo ErrorInfo {errorInfoCode, errorInfoMessage} = do
     str <- peekCString errorInfoMessage
     putStrLn $ "Error msg: " <> str
 
+-- | Contains detailed information about errors encountered during database operations.
+-- The 'ErrorInfo' data type provides a comprehensive set of fields to diagnose issues,
+-- including error codes, messages, and whether the error is recoverable.
 data ErrorInfo = ErrorInfo
-  { errorInfoCode :: CInt
-  , errorInfoOffset16 :: Word16
-  , errorInfoMessage :: CString
-  , errorInfoMessageLength :: CUInt
-  , errorInfoEncoding :: CString
-  , errorInfoFnName :: CString
-  , errorInfoAction :: CString
-  , errorInfoSqlState :: CString
-  , errorInfoIsRecoverable :: CInt
-  , errorInfoIsWarning :: CInt
+  { errorInfoCode :: CInt               -- ^ The error code.
+  , errorInfoOffset16 :: Word16         -- ^ The offset in bytes for the error.
+  , errorInfoMessage :: CString         -- ^ The error message as a C string.
+  , errorInfoMessageLength :: CUInt     -- ^ The length of the error message.
+  , errorInfoEncoding :: CString        -- ^ The character encoding for the error message.
+  , errorInfoFnName :: CString          -- ^ The name of the function where the error occurred.
+  , errorInfoAction :: CString          -- ^ The action being performed when the error happened.
+  , errorInfoSqlState :: CString        -- ^ The SQL state associated with the error.
+  , errorInfoIsRecoverable :: CInt      -- ^ Indicates if the error is recoverable (non-zero if true).
+  , errorInfoIsWarning :: CInt          -- ^ Indicates if the error is a warning (non-zero if true).
   }
   deriving (Show, Eq, Ord, Generic)
   deriving anyclass (GStorable)
 
+-- | Oracle Error type
 data OracleError = OracleError
   { oracleErrorFnName :: String
   -- ^ The public ODPI-C function name which was called in which the error took place.
@@ -1004,6 +1059,8 @@ toOracleError ErrorInfo {..} = do
     intToBool 1 = True
     intToBool i = error $ "boolean encoded as integer not 0 or 1: " <> show i
 
+-- | Throws an Oracle error based on the given error code.
+-- This function is used to handle errors by converting them to Haskell exceptions.
 throwOracleError :: CInt -> IO ()
 throwOracleError returnCode = do
   unless (returnCode == 0) $
@@ -1011,13 +1068,16 @@ throwOracleError returnCode = do
 
 instance Exception OracleError
 
+-- | Represents version information of the database or client.
+-- The 'VersionInfo' data type includes various fields identifying the
+-- specific version, release, and update numbers.
 data VersionInfo = VersionInfo
-  { versionNum :: CInt
-  , releaseNum :: CInt
-  , updateNum :: CInt
-  , portReleaseNum :: CInt
-  , portUpdateNum :: CInt
-  , fullVersionNum :: CUInt
+  { versionNum :: CInt          -- ^ The version number.
+  , releaseNum :: CInt          -- ^ The release number.
+  , updateNum :: CInt           -- ^ The update number.
+  , portReleaseNum :: CInt      -- ^ The port release number.
+  , portUpdateNum :: CInt       -- ^ The port update number.
+  , fullVersionNum :: CUInt     -- ^ The full version number as a single integer.
   }
   deriving (Show, Eq)
 
@@ -1042,6 +1102,7 @@ instance Storable VersionInfo where
         pokeByteOff basePtr 16 portUpdateNum
         pokeByteOff basePtr 20 fullVersionNum
 
+-- | Return information about the version of the Oracle Client that is being used.
 getClientVersion ::
   IO VersionInfo
 getClientVersion = do
@@ -1058,14 +1119,27 @@ foreign import ccall "dpiContext_getClientVersion"
     Ptr VersionInfo ->
     IO Int
 
+-- | Returns the version information of the Oracle Database to which the connection has been made.
 foreign import ccall "dpiConn_getServerVersion"
   dpiContext_getServerVersion ::
     Ptr DPIConn ->
     Ptr CString ->
-    CInt ->
+    Ptr CInt ->
     Ptr VersionInfo ->
     IO Int
 
+-- | Retrieves the server version information for a given database connection.
+-- This function takes a 'Connection' and 'VersionInfo', returning a string
+-- representation of the server version.
+--
+-- /Arguments:/
+--
+-- * `Connection`: The database connection from which to retrieve the server version.
+-- * `VersionInfo`: Version information structure to be filled by the function.
+--
+-- /Returns:/
+--
+-- An IO action that produces a 'String' representing the server version.
 getServerVersion ::
   Connection ->
   VersionInfo ->
@@ -1079,10 +1153,10 @@ getServerVersion (Connection fptr) versionInfo = do
           dpiContext_getServerVersion
             conn
             releaseStringPtr
-            (fromIntegral (10 :: Int))
+            nullPtr
             versionInfoPtr
         if status == 0
-          then (peekCString <=< peek) releaseStringPtr
+          then peekCString =<< peek releaseStringPtr
           else error $ show status <> " oh no!"
 
 foreign import ccall "dpiContext_initConnCreateParams"
@@ -1091,6 +1165,17 @@ foreign import ccall "dpiContext_initConnCreateParams"
     Ptr ConnectionCreateParams ->
     IO Int
 
+-- | Executes a given action with default 'ConnectionCreateParams'.
+-- This function provides a convenient way to use default connection
+-- creation parameters without manually specifying them.
+--
+-- /Arguments:/
+--
+-- * A function that takes 'ConnectionCreateParams' and returns an IO action.
+--
+-- /Returns:/
+--
+-- An IO action that executes with the default connection creation parameters.
 withConnCreateParams ::
   (ConnectionCreateParams -> IO a) ->
   IO a
@@ -1102,50 +1187,62 @@ withConnCreateParams f = do
       error $ "conn create params isn't 0" <> show status
     f =<< peek connCreateParamsPtr
 
+-- | Represents a sequence of bytes, typically used for handling binary or encoded data.
+-- The 'DPIBytes' structure holds a pointer to the byte data, its length, and its encoding.
 data DPIBytes = DPIBytes
-  { dpiBytesPtr :: CString
-  , dpiBytesLength :: CUInt
-  , dpiBytesEncoding :: CString
+  { dpiBytesPtr :: CString       -- ^ Pointer to the byte data.
+  , dpiBytesLength :: CUInt      -- ^ Length of the byte data.
+  , dpiBytesEncoding :: CString  -- ^ Encoding of the byte data.
   }
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+-- | Creates a 'DPIBytes' representation of a UTF-8 encoded string.
+-- Useful for passing string data to Oracle database functions that require 'DPIBytes'.
 mkDPIBytesUTF8 :: String -> IO DPIBytes
 mkDPIBytesUTF8 str = do
   (dpiBytesPtr, fromIntegral -> dpiBytesLength) <- newCStringLen str
   dpiBytesEncoding <- newCString "UTF-8"
   pure $ DPIBytes {..}
 
+-- | Converts 'DPIBytes' representing a UTF-8 encoded string to a Haskell 'String'.
+-- This function is useful for retrieving string data from Oracle databases.
 mkStringFromDPIBytesUTF8 :: DPIBytes -> IO String
 mkStringFromDPIBytesUTF8 DPIBytes{..} = peekCString dpiBytesPtr
 
+-- | Represents an interval of time in terms of days, hours, minutes, seconds, and fractional seconds.
+-- The 'DPIIntervalDS' type is typically used for handling intervals in Oracle database operations.
 data DPIIntervalDS = DPIIntervalDS
-  { days :: CInt
-  , hours :: CInt
-  , minutes :: CInt
-  , seconds :: CInt
-  , fseconds :: CInt
+  { days :: CInt      -- ^ The number of days in the interval.
+  , hours :: CInt     -- ^ The number of hours in the interval.
+  , minutes :: CInt   -- ^ The number of minutes in the interval.
+  , seconds :: CInt   -- ^ The number of seconds in the interval.
+  , fseconds :: CInt  -- ^ The fractional seconds in the interval.
   }
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+-- | Represents a year-month interval, useful for date calculations in Oracle databases.
+-- The 'DPIIntervalYM' type captures the duration in terms of years and months.
 data DPIIntervalYM = DPIIntervalYM
-  { years :: CInt
-  , months :: CInt
+  { years :: CInt   -- ^ The number of years in the interval.
+  , months :: CInt  -- ^ The number of months in the interval.
   }
   deriving (Show, Eq, Generic)
   deriving anyclass (GStorable)
 
+-- | Represents a timestamp, including date, time, and timezone offset information.
+-- The 'DPITimestamp' type is used for precise time representations and calculations.
 data DPITimestamp = DPITimestamp
-  { year :: Int16
-  , month :: Word8
-  , day :: Word8
-  , hour :: Word8
-  , minute :: Word8
-  , second :: Word8
-  , fsecond :: CUInt
-  , tzHourOffset :: Int8
-  , tzMinuteOffset :: Int8
+  { year :: Int16         -- ^ The year component of the timestamp.
+  , month :: Word8        -- ^ The month component (1 to 12) of the timestamp.
+  , day :: Word8          -- ^ The day component (1 to 31) of the timestamp.
+  , hour :: Word8         -- ^ The hour component (0 to 23) of the timestamp.
+  , minute :: Word8       -- ^ The minute component (0 to 59) of the timestamp.
+  , second :: Word8       -- ^ The second component (0 to 59) of the timestamp.
+  , fsecond :: CUInt      -- ^ The fractional seconds component of the timestamp.
+  , tzHourOffset :: Int8  -- ^ The timezone hour offset from UTC.
+  , tzMinuteOffset :: Int8 -- ^ The timezone minute offset from UTC.
   }
   deriving (Show, Eq)
 
@@ -1229,13 +1326,15 @@ dpiTimeStampToUTCDPITimeStamp dpi@DPITimestamp {..} =
         , minute = fromIntegral minutes
         }
 
+-- | Represents an application context for Oracle sessions, including namespace, name, and value.
+-- The 'DPIAppContext' type is used to store context-specific information for sessions.
 data DPIAppContext = DPIAppContext
-  { namespaceName :: CString
-  , namespaceNameLength :: CUInt
-  , name :: CString
-  , nameLength :: CUInt
-  , value :: CString
-  , valueLength :: CUInt
+  { namespaceName :: CString       -- ^ The namespace name of the application context.
+  , namespaceNameLength :: CUInt   -- ^ The length of the namespace name.
+  , name :: CString                -- ^ The name of the application context.
+  , nameLength :: CUInt            -- ^ The length of the name.
+  , value :: CString               -- ^ The value associated with the application context.
+  , valueLength :: CUInt           -- ^ The length of the value.
   }
   deriving (Show, Eq)
 
@@ -1272,12 +1371,14 @@ instance Storable DPIAppContext where
         poke (base `plusPtr` (3 * sizeOf (undefined :: CString))
                         `plusPtr` (2 * sizeOf (undefined :: CUInt))) valueLength
 
+-- | Contains parameters for creating a DPI context, including driver and encoding settings.
+-- The 'DPIContextCreateParams' type allows customization of the context creation process.
 data DPIContextCreateParams = DPIContextCreateParams
-  { defaultDriverName :: CString
-  , defaultEncoding :: CString
-  , loadErrorUrl :: CString
-  , oracleClientLibDir :: CString
-  , oracleClientConfigDir :: CString
+  { defaultDriverName :: CString          -- ^ The default driver name as a C string.
+  , defaultEncoding :: CString            -- ^ The default character encoding as a C string.
+  , loadErrorUrl :: CString               -- ^ The URL for loading error information.
+  , oracleClientLibDir :: CString         -- ^ The directory path to the Oracle client libraries.
+  , oracleClientConfigDir :: CString      -- ^ The configuration directory for the Oracle client.
   }
   deriving (Show, Eq)
 
@@ -1324,6 +1425,16 @@ foreign import ccall "dpiConn_prepareStmt"
     Ptr DPIStmt ->
     IO CInt
 
+-- | Prepares a SQL statement for execution using a connection.
+--
+-- /Arguments:/
+--
+-- * `Connection`: The database connection to use.
+-- * `String`: The SQL query to prepare.
+--
+-- /Returns:/
+--
+-- An IO action that produces a 'DPIStmt' ready for execution.
 prepareStmt ::
   Connection ->
   -- | sql
@@ -1337,6 +1448,8 @@ prepareStmt (Connection fptr) sql = do
         throwOracleError status
         peek stmtPtr
 
+-- | Specifies the execution mode for DPI operations.
+-- Currently, only the 'DPI_MODE_EXEC_DEFAULT' mode is defined.
 data DPIModeExec
   = DPI_MODE_EXEC_DEFAULT -- 0x00000000
   | DPI_MODE_EXEC_DESCRIBE_ONLY -- 0x00000010
@@ -1419,6 +1532,7 @@ getQueryValue stmt pos = do
           dataBuffer <- peek buffer
           pure (nativeType, dataBuffer)
 
+-- | Enumerates the native types used in Oracle data structures.
 data DPINativeType
   = DPI_NATIVE_TYPE_INT64
   | DPI_NATIVE_TYPE_UINT64
@@ -1449,6 +1563,9 @@ instance Storable DPINativeType where
       Just val -> pure val
   poke ptr val = poke (castPtr ptr) (dpiNativeTypeToUInt val)
 
+-- | Converts a 'DPINativeType' to an unsigned integer.
+-- Useful for interfacing with C libraries that require numeric
+-- representation of native types.
 dpiNativeTypeToUInt :: DPINativeType -> CUInt
 dpiNativeTypeToUInt DPI_NATIVE_TYPE_INT64 = 3000
 dpiNativeTypeToUInt DPI_NATIVE_TYPE_UINT64 = 3001
@@ -1665,30 +1782,51 @@ freeWriteBuffer (AsString cString) = free cString
 freeWriteBuffer (AsBytes DPIBytes {..}) = free dpiBytesPtr >> free dpiBytesEncoding
 freeWriteBuffer _ = pure ()
 
+-- | Retrieves a 'Double' value from the DPI data buffer.
 foreign import ccall "dpiData_getDouble"
   dpiData_getDouble :: Ptr (DPIData ReadBuffer) -> IO Double
 
+-- | Retrieves a 'Float' value from the DPI data buffer.
 foreign import ccall "dpiData_getFloat"
   dpiData_getFloat :: Ptr (DPIData ReadBuffer) -> IO Float
 
+-- | Retrieves a byte pointer from the DPI data buffer.
 foreign import ccall "dpiData_getBytes"
   dpiData_getBytes :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPIBytes)
 
+-- | Retrieves a timestamp pointer from the DPI data buffer.
 foreign import ccall "dpiData_getTimestamp"
   dpiData_getTimestamp :: Ptr (DPIData ReadBuffer) -> IO (Ptr DPITimestamp)
 
+-- | Retrieves a 64-bit integer from the DPI data buffer.
 foreign import ccall "dpiData_getInt64"
   dpiData_getInt64 :: Ptr (DPIData ReadBuffer) -> IO Int64
 
+-- | Retrieves a 64-bit unsigned integer from the DPI data buffer.
 foreign import ccall "dpiData_getUint64"
   dpiData_getUint64 :: Ptr (DPIData ReadBuffer) -> IO Word64
 
+-- | Retrieves a Boolean value as an integer from the DPI data buffer.
 foreign import ccall "dpiData_getBool"
   dpiData_getBool :: Ptr (DPIData ReadBuffer) -> IO Int
 
+-- | Returns an integer where a non-zero value indicates that the data is null.
 foreign import ccall "dpiData_getIsNull"
   dpiData_getIsNull :: Ptr (DPIData ReadBuffer) -> IO Int
 
+-- | Binds a value by position in a DPI statement.
+-- This function is used to set parameters in a statement before execution.
+--
+-- /Arguments:/
+--
+-- * `DPIStmt`: The statement to which the value is bound.
+-- * `CUInt`: The position of the parameter to bind.
+-- * `CUInt`: The native type number of the value.
+-- * Pointer to 'DPIData WriteBuffer': The data to bind.
+--
+-- /Returns:/
+--
+-- An IO action resulting in an integer indicating success or failure.
 foreign import ccall "dpiStmt_bindValueByPos"
   dpiStmt_bindValueByPos ::
     -- | dpiStmt *stmt
@@ -1702,6 +1840,8 @@ foreign import ccall "dpiStmt_bindValueByPos"
     -- | int
     IO CInt
 
+-- | Binds a value by position in a statement.
+-- This function is a higher-level wrapper around the C FFI for binding values.
 bindValueByPos :: DPIStmt -> Column -> DPINativeType -> DPIData WriteBuffer -> IO ()
 bindValueByPos stmt col nativeType val = do
   alloca $ \dpiData' -> do
@@ -1716,6 +1856,7 @@ foreign import ccall "dpiStmt_getRowCount"
     Ptr Word64 ->
     IO CInt
 
+-- | Retrieves the number of rows affected by the execution of a statement.
 getRowCount :: DPIStmt -> IO Word64
 getRowCount stmt = do
   alloca $ \rowCount -> do

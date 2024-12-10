@@ -7,31 +7,26 @@
 {-# LANGUAGE ScopedTypeVariables #-}
 
 module Database.Oracle.Simple.Queue (
-    DPIQueue (..)
-  , DPIMsgProps (..)
-  , DPIDeqOptions (..)
-  , DPIEnqOptions (..)
-  , DPIObjectType (..)
-  , deqMany
-  , deqOne
-  , enqMany
-  , enqOne 
-  , getDeqOptions
-  , getEnqOptions
-  , queueRelease 
-  , genQueueJSON
+    genQueue 
   , genQueueObject
+  , genQueueJSON
   , genMsgProps
-  , genQueue 
+  , enqOne 
+  , enqMany
+  , deqOne
+  , deqMany
+  , setMsgPropsPayLoadBytes 
+  , getMsgPropsPayLoadBytes
+  , setMsgPropsPayLoadObject
+  , getMsgPropsPayLoadObject 
+  , setMsgPropsPayLoadJSON 
+  , getMsgPropsPayLoadJson 
+  , queueRelease 
+  , getEnqOptions
+  , getDeqOptions
+  , getMsgPropsDelay
   , genJSON 
   , getMsgPropsNumOfAttempts 
-  , getMsgPropsDelay
-  , getMsgPropsPayLoadBytes
-  , getMsgPropsPayLoadJson 
-  , getMsgPropsPayLoadObject 
-  , setMsgPropsPayLoadBytes 
-  , setMsgPropsPayLoadJSON 
-  , setMsgPropsPayLoadObject
   , objectAppendElement 
   , getObjectElementByIdx
   , setObjectElementByIdx
@@ -39,6 +34,11 @@ module Database.Oracle.Simple.Queue (
   , dpiJsonToVal 
   , releaseDpiJson
   , setValInJSON
+  , DPIQueue (..)
+  , DPIMsgProps (..)
+  , DPIDeqOptions (..)
+  , DPIEnqOptions (..)
+  , DPIObjectType (..)
 ) where
 
 import Foreign (alloca, withArray, withForeignPtr, nullPtr)
@@ -56,22 +56,30 @@ import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import Data.Proxy (Proxy (..))
 
+-- | Represents a queue in the Oracle database.
+-- The 'DPIQueue' type is a wrapper for a pointer to a DPI queue.
 newtype DPIQueue = DPIQueue (Ptr DPIQueue)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | This type represents a pointer to a `DPIMsgProps` struct,
+-- | which contains metadata about an Oracle message, including its
+-- | properties and attributes.
 newtype DPIMsgProps = DPIMsgProps (Ptr DPIMsgProps)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | This type represents a pointer to a `DPIDeqOptions` struct.
 newtype DPIDeqOptions = DPIDeqOptions (Ptr DPIDeqOptions)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | This type represents a pointer to a `DPIEnqOptions` struct.
 newtype DPIEnqOptions = DPIEnqOptions (Ptr DPIEnqOptions)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | Dequeues multiple messages from the queue.
 deqMany :: DPIQueue -> Int -> IO DPIMsgProps
 deqMany dpiQueue numProps = do
   alloca $ \dpiMsgPropsPtr -> do
@@ -90,7 +98,8 @@ foreign import ccall unsafe "dpiQueue_deqMany"
     -- | props **
     Ptr DPIMsgProps ->
     IO CInt
- 
+
+-- | Dequeues a single message from the queue.
 deqOne :: DPIQueue -> IO DPIMsgProps
 deqOne dpiQueue = do
   alloca $ \dpiMsgPropsPtr -> do
@@ -107,6 +116,8 @@ foreign import ccall unsafe "dpiQueue_deqOne"
     IO CInt
 
 {- |
+Enqueues multiple messages into the queue.
+
 Warning: calling this function in parallel on different connections acquired from
 the same pool may fail due to Oracle bug 29928074. Ensure that this function is not
 run in parallel, use standalone connections or connections from different pools, or
@@ -131,6 +142,7 @@ foreign import ccall unsafe "dpiQueue_enqMany"
     Ptr DPIMsgProps ->
     IO CInt
 
+-- | Enqueues a single mesasge into the queue.
 enqOne :: DPIQueue -> DPIMsgProps -> IO ()
 enqOne dpiQueue dpiMsgProps = 
     throwOracleError =<<
@@ -144,6 +156,7 @@ foreign import ccall unsafe "dpiQueue_enqOne"
     DPIMsgProps ->
     IO CInt
 
+-- | Returns a reference to the dequeue options associated with the queue. These options affect how messages are dequeued.
 getDeqOptions :: DPIQueue -> IO DPIDeqOptions
 getDeqOptions dpiQueue = do
   alloca $ \dpiDeqOptionsPtr -> do
@@ -158,6 +171,7 @@ foreign import ccall unsafe "dpiQueue_getDeqOptions"
     Ptr DPIDeqOptions ->
     IO CInt
 
+-- | Returns a reference to the enqueue options associated with the queue. These options affect how messages are enqueued.
 getEnqOptions :: DPIQueue -> IO DPIEnqOptions
 getEnqOptions dpiQueue = do 
   alloca $ \dpiEnqOptionsPtr -> do
@@ -172,6 +186,7 @@ foreign import ccall unsafe "dpiQueue_getEnqOptions"
     Ptr DPIEnqOptions ->
     IO CInt
 
+-- | Releases a reference to the queue.
 queueRelease :: DPIQueue -> IO ()
 queueRelease dpiQueue = throwOracleError =<< dpiQueue_release dpiQueue
 
@@ -181,6 +196,7 @@ foreign import ccall unsafe "dpiQueue_release"
     DPIQueue ->
     IO CInt
 
+-- | Returns a reference to a new queue which enqueues and dequeues messages from Advanced Queueing (AQ) with a JSON payload. 
 genQueueJSON :: Connection -> String -> IO DPIQueue
 genQueueJSON (Connection fptr) queueName = do
   withForeignPtr fptr $ \conn -> do
@@ -201,6 +217,7 @@ foreign import ccall unsafe "dpiConn_newJsonQueue"
     Ptr DPIQueue ->
     IO CInt
 
+-- | Returns a reference to a new set of message properties, used in enqueuing and dequeuing objects in a queue.
 genMsgProps :: Connection -> IO DPIMsgProps
 genMsgProps (Connection fptr) = do
   withForeignPtr fptr $ \conn -> do
@@ -216,6 +233,7 @@ foreign import ccall unsafe "dpiConn_newMsgProps"
     Ptr DPIMsgProps ->
     IO CInt
 
+-- | Returns a reference to a new queue which may be used to enqueue and dequeue messages from Advanced Queuing (AQ) queues.
 genQueue :: Connection -> String -> IO DPIQueue
 genQueue (Connection fptr) queueName = do
   withForeignPtr fptr $ \conn -> do
@@ -224,6 +242,8 @@ genQueue (Connection fptr) queueName = do
         throwOracleError =<< dpiConn_newQueue conn queueNameC queueNameLen nullPtr dpiQueuePtr
         peek dpiQueuePtr
 
+-- | Returns a reference to a new queue which may be used to 
+-- | enqueue and dequeue messages from Advanced Queuing (AQ) queues with Object as Payload type.
 genQueueObject :: Connection -> String -> DPIObjectType -> IO DPIQueue
 genQueueObject (Connection fptr) queueName (DPIObjectType objectType) = do
   withForeignPtr fptr $ \conn -> do
@@ -248,6 +268,7 @@ foreign import ccall unsafe "dpiConn_newQueue"
 
 -----x DPI MsgProps related functions x-----
 
+-- | Returns the number of attempts that have been made to dequeue a message.
 getMsgPropsNumOfAttempts :: DPIMsgProps -> IO Int
 getMsgPropsNumOfAttempts dpiMsgProps = do
   alloca $ \numPtr -> do
@@ -262,6 +283,7 @@ foreign import ccall unsafe "dpiMsgProps_getNumAttempts"
     Ptr CUInt ->
     IO CInt
 
+-- | Returns the number of seconds the enqueued message will be delayed.
 getMsgPropsDelay :: DPIMsgProps -> IO Int
 getMsgPropsDelay dpiMsgProps = do
   alloca $ \numPtr -> do
@@ -276,10 +298,7 @@ foreign import ccall unsafe "dpiMsgProps_getDelay"
     Ptr CUInt ->
     IO CInt
 
-{-
-This function internally calls getPayLoad which either returns payLoad in either Object or in bytes.
-Hence, the result might be null.
--}
+-- | Returns the payload associated with the message properties in bytes. 
 getMsgPropsPayLoadBytes :: DPIMsgProps -> IO (Maybe BSC.ByteString)
 getMsgPropsPayLoadBytes dpiMsgProps = do
   alloca $ \dpiObjectPtr -> do
@@ -291,6 +310,7 @@ getMsgPropsPayLoadBytes dpiMsgProps = do
               then return Nothing
             else Just . BSC.pack <$> peekCString cStr
 
+-- | Returns the payload associated with the message properties in Object type.
 getMsgPropsPayLoadObject :: DPIMsgProps -> IO (Maybe DPIObject)
 getMsgPropsPayLoadObject dpiMsgProps = 
   alloca $ \dpiObjectPtr -> do
@@ -311,6 +331,7 @@ foreign import ccall unsafe "dpiMsgProps_getPayload"
     Ptr CUInt ->
     IO CInt
 
+-- | Returns the payload associated with the message properties, The payload must be a JSON object
 getMsgPropsPayLoadJson :: FromJSON a => DPIMsgProps -> IO (Maybe a)
 getMsgPropsPayLoadJson dpiMsgProps = do
   alloca $ \dpiJsonPtr -> do
@@ -329,6 +350,7 @@ foreign import ccall unsafe "dpiMsgProps_getPayloadJson"
     Ptr  DPIJson ->
     IO CInt
 
+-- | Sets the payload for the message as a series of bytes. 
 setMsgPropsPayLoadBytes :: DPIMsgProps -> BSC.ByteString -> IO ()
 setMsgPropsPayLoadBytes dpiMsgProps payLoad = do
   withCStringLen (BSC.unpack payLoad) $ \(payLoadC , fromIntegral -> payLoadLen) -> do
@@ -344,6 +366,7 @@ foreign import ccall unsafe "dpiMsgProps_setPayloadBytes"
     CUInt ->
     IO CInt
 
+-- | Sets the payload for the message as a object. 
 setMsgPropsPayLoadObject :: DPIMsgProps -> DPIObject-> IO ()
 setMsgPropsPayLoadObject dpiMsgProps obj = do
   throwOracleError =<< dpiMsgProps_setPayloadObject dpiMsgProps obj
@@ -356,6 +379,7 @@ foreign import ccall unsafe "dpiMsgProps_setPayloadObject"
     DPIObject ->
     IO CInt
 
+-- | Sets the payload for the message as a JSON object. 
 setMsgPropsPayLoadJSON :: DPIMsgProps -> DPIJson -> IO ()
 setMsgPropsPayLoadJSON dpiMsgProps dpiJson =
   throwOracleError =<< dpiMsgProps_setPayloadJson dpiMsgProps dpiJson
@@ -368,6 +392,7 @@ foreign import ccall unsafe "dpiMsgProps_setPayloadJson"
     DPIJson ->
     IO CInt
 
+-- | Appends an element with the specified value to the collection.
 objectAppendElement :: forall a. (ToField a) => DPIObject -> a -> IO ()
 objectAppendElement obj val = do
     dataValue <- toField val
@@ -393,6 +418,7 @@ foreign import ccall unsafe "dpiObject_appendElement"
     Ptr (DPIData WriteBuffer) ->
     IO CInt
 
+-- | Returns the value of the element found at the specified index.
 getObjectElementByIdx 
     :: forall a. (FromField a) => 
     DPIObject -> 
@@ -420,6 +446,7 @@ foreign import ccall unsafe "dpiObject_getElementValueByIndex"
     Ptr (DPIData ReadBuffer) ->
     IO CInt
 
+-- | Sets the value of the element found at the specified index.
 setObjectElementByIdx 
     :: forall a. (ToField a) => 
     DPIObject -> 
@@ -453,6 +480,7 @@ foreign import ccall unsafe "dpiObject_setElementValueByIndex"
     Ptr (DPIData WriteBuffer) ->
     IO CInt
 
+-- | Returns a reference to a new JSON object.
 genJSON :: Connection -> IO DPIJson
 genJSON (Connection fptr) = do
   withForeignPtr fptr $ \conn -> do
@@ -468,17 +496,20 @@ foreign import ccall unsafe "dpiConn_newJson"
     Ptr DPIJson ->
     IO CInt
 
+-- | Helper function that inserts any type with ToJSON instance into DPIJson.
 setValInJSON :: forall a. (ToJSON a) => DPIJson -> a -> IO DPIJson
 setValInJSON dpiJson jsonData = do
   let res_ = BSLC.unpack $ encode jsonData
   setTextInJson dpiJson res_
 
+-- | Helper function that takes value from DPIJson into any type with FromJSON Instance.
 dpiJsonToVal :: FromJSON a => DPIJson -> IO a
 dpiJsonToVal dpiJson = do
   jsonNodePtr <- dpiJson_getValue dpiJson
   jsonNode <- (peek jsonNodePtr)
   parseJson jsonNode
 
+-- | Helper function that inserts JSON string into DPIJson.
 setTextInJson :: DPIJson -> String -> IO DPIJson
 setTextInJson dpiJson jsonVal = do
     withCStringLen jsonVal $ \ (jsonString, jsonStringLen) -> do
@@ -498,6 +529,7 @@ foreign import ccall unsafe "dpiJson_setFromText"
     CUInt -> 
     IO CInt
 
+-- | Releases a reference to the JSON value. 
 releaseDpiJson :: DPIJson -> IO ()
 releaseDpiJson dpiJson = do
   throwOracleError =<< dpiJson_release dpiJson

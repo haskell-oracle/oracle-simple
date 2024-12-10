@@ -94,6 +94,8 @@ instance FromField Time.UTCTime where
   fromDPINativeType _ = DPI_NATIVE_TYPE_TIMESTAMP
   fromField = dpiTimeStampToUTCTime <$> fromField
 
+-- | Converts a 'DPITimestamp' to a 'Time.UTCTime'.
+-- This function is useful for working with timestamps in Haskell's time library.
 dpiTimeStampToUTCTime :: DPITimestamp -> Time.UTCTime
 dpiTimeStampToUTCTime dpi =
   let DPITimestamp {..} = dpiTimeStampToUTCDPITimeStamp dpi
