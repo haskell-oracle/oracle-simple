@@ -78,6 +78,7 @@ module Database.Oracle.Simple.Internal
     dpiConn_close_finalizer,
     dpiConn_release_finalizer,
     dpiNativeTypeToUInt,
+    dpiOracleTypeToUInt,
   )
 where
 

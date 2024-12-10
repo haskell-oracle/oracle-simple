@@ -57,6 +57,7 @@ module Database.Oracle.Simple
 
     -- * Miscellaneous
   , module Export
+  , module LOB
   ) where
 
 import Database.Oracle.Simple.Execute as Execute
@@ -108,6 +109,7 @@ import Database.Oracle.Simple.Queue as Queue
 import Database.Oracle.Simple.ToField as ToField
 import Database.Oracle.Simple.ToRow as ToRow
 import Database.Oracle.Simple.Transaction as Transaction
+import Database.Oracle.Simple.LOB as LOB
 
 -- $use
 -- This library provides a 'Query' type and a parameter substitution

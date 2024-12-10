@@ -41,6 +41,7 @@ library
       Database.Oracle.Simple.Transaction
       Database.Oracle.Simple.Queue
       Database.Oracle.Simple.Object
+      Database.Oracle.Simple.LOB
   hs-source-dirs:
       src
   c-sources:
