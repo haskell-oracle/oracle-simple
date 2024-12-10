@@ -44,14 +44,7 @@ module Database.Oracle.Simple.Internal
     OracleError (..),
     ErrorInfo (..),
     VersionInfo (..),
-    DPIJson (..),
-    DPIObjectType (..),
-    DPIObject (..),
-    genJSON,
-    genObject,
-    getObjectType,
     renderErrorInfo,
-    releaseObject,
     ping,
     fetch,
     close,
@@ -70,6 +63,7 @@ module Database.Oracle.Simple.Internal
     bindValueByPos,
     freeWriteBuffer,
     mkDPIBytesUTF8,
+    mkStringFromDPIBytesUTF8,
     isHealthy,
     dpiTimeStampToUTCDPITimeStamp,
     throwOracleError,
@@ -124,18 +118,6 @@ newtype DPIContext = DPIContext (Ptr DPIContext)
   deriving newtype (Storable)
 
 newtype DPIShardingKeyColumn = DPIShardingKeyColumn (Ptr DPIShardingKeyColumn)
-  deriving (Show, Eq)
-  deriving newtype (Storable)
-
-newtype DPIJson = DPIJson (Ptr DPIJson)
-  deriving (Show, Eq)
-  deriving newtype (Storable)
-
-newtype DPIObjectType = DPIObjectType (Ptr DPIObjectType)
-  deriving (Show, Eq)
-  deriving newtype (Storable)
-
-newtype DPIObject = DPIObject (Ptr DPIObject)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
@@ -1134,6 +1116,9 @@ mkDPIBytesUTF8 str = do
   dpiBytesEncoding <- newCString "UTF-8"
   pure $ DPIBytes {..}
 
+mkStringFromDPIBytesUTF8 :: DPIBytes -> IO String
+mkStringFromDPIBytesUTF8 DPIBytes{..} = peekCString dpiBytesPtr
+
 data DPIIntervalDS = DPIIntervalDS
   { days :: CInt
   , hours :: CInt
@@ -1773,62 +1758,4 @@ newtype Only a = Only {fromOnly :: a}
   deriving stock (Eq, Ord, Read, Show, Generic)
   deriving newtype (Enum)
 
-genJSON :: Connection -> IO DPIJson
-genJSON (Connection fptr) = do
-  withForeignPtr fptr $ \conn -> do
-    alloca $ \jsonPtr -> do
-      throwOracleError =<< dpiConn_newJson conn jsonPtr
-      peek jsonPtr
-
-foreign import ccall unsafe "dpiConn_newJson"
-  dpiConn_newJson ::
-    -- | dpiConn *
-    Ptr DPIConn ->
-    -- | dpiJSON **
-    Ptr DPIJson ->
-    IO CInt
-
-getObjectType :: Connection -> String -> IO DPIObjectType
-getObjectType (Connection fptr) objectName = do
-  withForeignPtr fptr $ \conn -> do
-    withCStringLen objectName $ \(objectNameC, fromIntegral -> objectNameLen) -> do
-      alloca $ \objectTypePtr -> do
-        throwOracleError =<< dpiConn_getObjectType conn objectNameC objectNameLen objectTypePtr
-        peek objectTypePtr
-
-foreign import ccall unsafe "dpiConn_getObjectType"
-    dpiConn_getObjectType ::
-    -- | dpiConn *
-    Ptr DPIConn ->
-    -- | char * name
-    CString ->
-    -- | cuint32_t nameLength
-    CUInt -> 
-    -- | dpiObjectType ** objType
-    Ptr DPIObjectType ->
-    IO CInt
-
-genObject :: DPIObjectType -> IO DPIObject
-genObject objType = do
-  alloca $ \objectPtr -> do
-    throwOracleError =<< dpiObjectType_createObject objType objectPtr
-    peek objectPtr
-
-foreign import ccall unsafe "dpiObjectType_createObject"
-    dpiObjectType_createObject ::
-    -- | dpiObjectType *
-    DPIObjectType ->
-    -- | dpiObject ** obj
-    Ptr DPIObject ->
-    IO CInt
-
-releaseObject :: DPIObject -> IO ()
-releaseObject obj = do
-  throwOracleError =<< dpiObject_release obj
-
-foreign import ccall unsafe "dpiObject_release"
-    dpiObject_release ::
-    -- | dpiObject *
-    DPIObject ->
-    IO CInt
 

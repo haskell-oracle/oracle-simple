@@ -23,6 +23,7 @@ module Database.Oracle.Simple.Queue (
   , genQueueObject
   , genMsgProps
   , genQueue 
+  , genJSON 
   , getMsgPropsNumOfAttempts 
   , getMsgPropsDelay
   , getMsgPropsPayLoadBytes
@@ -33,17 +34,26 @@ module Database.Oracle.Simple.Queue (
   , setMsgPropsPayLoadObject
   , objectAppendElement 
   , getObjectElementByIdx
+  , setObjectElementByIdx
+  , setTextInJson
+  , dpiJsonToVal 
+  , releaseDpiJson
+  , setValInJSON
 ) where
 
 import Foreign (alloca, withArray, withForeignPtr, nullPtr)
 import Foreign.Storable.Generic (Storable (..))
-import Foreign.C.Types (CInt (..), CUInt (..)) 
+import Foreign.C.Types (CInt (..), CUInt (..), CULong(..)) 
 import Foreign.Ptr (Ptr)
 import Foreign.C.String
 import Database.Oracle.Simple.Internal
+import Database.Oracle.Simple.Object
 import Database.Oracle.Simple.ToField
 import Database.Oracle.Simple.FromField
+import Database.Oracle.Simple.JSON
+import Data.Aeson (ToJSON, FromJSON, encode)
 import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy.Char8 as BSLC
 import Data.Proxy (Proxy (..))
 
 newtype DPIQueue = DPIQueue (Ptr DPIQueue)
@@ -301,11 +311,15 @@ foreign import ccall unsafe "dpiMsgProps_getPayload"
     Ptr CUInt ->
     IO CInt
 
-getMsgPropsPayLoadJson :: DPIMsgProps -> IO DPIJson
+getMsgPropsPayLoadJson :: FromJSON a => DPIMsgProps -> IO (Maybe a)
 getMsgPropsPayLoadJson dpiMsgProps = do
   alloca $ \dpiJsonPtr -> do
     throwOracleError =<< dpiMsgProps_getPayloadJson dpiMsgProps dpiJsonPtr
-    peek dpiJsonPtr
+    if (dpiJsonPtr == nullPtr) then return Nothing
+    else do 
+      dpiJson <- peek dpiJsonPtr
+      res <- dpiJsonToVal dpiJson
+      return $ Just res
 
 foreign import ccall unsafe "dpiMsgProps_getPayloadJson"
   dpiMsgProps_getPayloadJson ::
@@ -343,8 +357,8 @@ foreign import ccall unsafe "dpiMsgProps_setPayloadObject"
     IO CInt
 
 setMsgPropsPayLoadJSON :: DPIMsgProps -> DPIJson -> IO ()
-setMsgPropsPayLoadJSON dpiMsgProps payLoadJson = do
-  throwOracleError =<< dpiMsgProps_setPayloadJson dpiMsgProps payLoadJson
+setMsgPropsPayLoadJSON dpiMsgProps dpiJson =
+  throwOracleError =<< dpiMsgProps_setPayloadJson dpiMsgProps dpiJson
 
 foreign import ccall unsafe "dpiMsgProps_setPayloadJson"
     dpiMsgProps_setPayloadJson ::
@@ -387,15 +401,15 @@ getObjectElementByIdx
 getObjectElementByIdx obj idx = do
     alloca $ \dpiDataPtr -> do
       throwOracleError =<< 
-        dpiObject_getElementExistsByIndex 
+        dpiObject_getElementValueByIndex 
             obj 
             (CInt $ fromIntegral idx)
             (dpiNativeTypeToUInt (fromDPINativeType (Proxy @a)))
             dpiDataPtr
       readDPIDataBuffer (fromField @a) dpiDataPtr
 
-foreign import ccall unsafe "dpiObject_getElementExistsByIndex"
-    dpiObject_getElementExistsByIndex ::
+foreign import ccall unsafe "dpiObject_getElementValueByIndex"
+    dpiObject_getElementValueByIndex ::
     -- | dpiObject *
     DPIObject ->
     -- | int32_t index
@@ -404,4 +418,92 @@ foreign import ccall unsafe "dpiObject_getElementExistsByIndex"
     CUInt ->
     -- | dpiData *
     Ptr (DPIData ReadBuffer) ->
+    IO CInt
+
+setObjectElementByIdx 
+    :: forall a. (ToField a) => 
+    DPIObject -> 
+    Int ->
+    a ->
+    IO ()
+setObjectElementByIdx obj idx val = do
+    dataValue <- toField val
+    let dataIsNull = case dataValue of
+                            AsNull -> 1
+                            _ -> 0
+    alloca $ \dpiDataPtr -> do
+      let dpiData = DPIData{..}
+      poke dpiDataPtr (dpiData :: DPIData WriteBuffer)
+      throwOracleError =<< 
+        dpiObject_setElementValueByIndex 
+            obj 
+            (CInt $ fromIntegral idx)
+            (dpiNativeTypeToUInt (toDPINativeType (Proxy @a)))
+            dpiDataPtr
+
+foreign import ccall unsafe "dpiObject_setElementValueByIndex"
+    dpiObject_setElementValueByIndex ::
+    -- | dpiObject *
+    DPIObject ->
+    -- | int32_t index
+    CInt ->
+    -- | dpiNativeTypeNum
+    CUInt ->
+    -- | dpiData *
+    Ptr (DPIData WriteBuffer) ->
+    IO CInt
+
+genJSON :: Connection -> IO DPIJson
+genJSON (Connection fptr) = do
+  withForeignPtr fptr $ \conn -> do
+    alloca $ \jsonPtr -> do
+      throwOracleError =<< dpiConn_newJson conn jsonPtr
+      peek jsonPtr
+
+foreign import ccall unsafe "dpiConn_newJson"
+  dpiConn_newJson ::
+    -- | dpiConn *
+    Ptr DPIConn ->
+    -- | dpiJSON **
+    Ptr DPIJson ->
+    IO CInt
+
+setValInJSON :: forall a. (ToJSON a) => DPIJson -> a -> IO DPIJson
+setValInJSON dpiJson jsonData = do
+  let res_ = BSLC.unpack $ encode jsonData
+  setTextInJson dpiJson res_
+
+dpiJsonToVal :: FromJSON a => DPIJson -> IO a
+dpiJsonToVal dpiJson = do
+  jsonNodePtr <- dpiJson_getValue dpiJson
+  jsonNode <- (peek jsonNodePtr)
+  parseJson jsonNode
+
+setTextInJson :: DPIJson -> String -> IO DPIJson
+setTextInJson dpiJson jsonVal = do
+    withCStringLen jsonVal $ \ (jsonString, jsonStringLen) -> do
+      throwOracleError =<< 
+        dpiJson_setFromText dpiJson jsonString (fromIntegral jsonStringLen) 0
+      return dpiJson
+
+foreign import ccall unsafe "dpiJson_setFromText"
+  dpiJson_setFromText ::
+    -- | dpiJson *
+    DPIJson ->
+    -- | const char *value
+    CString ->
+    -- | uint64_t
+    CULong ->
+    -- | flags
+    CUInt -> 
+    IO CInt
+
+releaseDpiJson :: DPIJson -> IO ()
+releaseDpiJson dpiJson = do
+  throwOracleError =<< dpiJson_release dpiJson
+
+foreign import ccall unsafe "dpiJson_release"
+  dpiJson_release ::
+    -- | dpiJson *
+    DPIJson ->
     IO CInt
