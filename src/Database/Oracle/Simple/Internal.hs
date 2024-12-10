@@ -153,10 +153,10 @@ defaultAdditionalConnectionParams =
     }
 
 data ConnectionParams = ConnectionParams
-  { user :: String
-  , pass :: String
-  , connString :: String
-  , additionalParams :: Maybe AdditionalConnectionParams
+  { user :: String -- ^ name of the user used for authenticating the user
+  , pass :: String -- ^ password to use for authenticating the user
+  , connString :: String -- ^ connect string identifying the database to which a connection is to be established,
+  , additionalParams :: Maybe AdditionalConnectionParams -- ^ optional additional parameters
   }
   deriving (Eq, Ord, Show)
 
@@ -1042,6 +1042,7 @@ instance Storable VersionInfo where
         pokeByteOff basePtr 16 portUpdateNum
         pokeByteOff basePtr 20 fullVersionNum
 
+-- | Return information about the version of the Oracle Client that is being used.
 getClientVersion ::
   IO VersionInfo
 getClientVersion = do
@@ -1058,11 +1059,12 @@ foreign import ccall "dpiContext_getClientVersion"
     Ptr VersionInfo ->
     IO Int
 
+-- | Returns the version information of the Oracle Database to which the connection has been made.
 foreign import ccall "dpiConn_getServerVersion"
   dpiContext_getServerVersion ::
     Ptr DPIConn ->
     Ptr CString ->
-    CInt ->
+    Ptr CInt ->
     Ptr VersionInfo ->
     IO Int
 
@@ -1079,10 +1081,10 @@ getServerVersion (Connection fptr) versionInfo = do
           dpiContext_getServerVersion
             conn
             releaseStringPtr
-            (fromIntegral (10 :: Int))
+            nullPtr
             versionInfoPtr
         if status == 0
-          then (peekCString <=< peek) releaseStringPtr
+          then peekCString =<< peek releaseStringPtr
           else error $ show status <> " oh no!"
 
 foreign import ccall "dpiContext_initConnCreateParams"
