@@ -490,11 +490,13 @@ instance Storable DPIPoolCreateParams where
                  `plusPtr`     sizeOf (undefined :: DPIPoolGetMode)
                  `plusPtr` (2 * sizeOf (undefined :: CString))) dpi_accessTokenCallbackContext
 
+-- | Modes for obtaining connections from a connection pool.
+-- 'DPIPoolGetMode' specifies different strategies for retrieving a connection.
 data DPIPoolGetMode
-  = DPI_MODE_POOL_GET_FORCEGET
-  | DPI_MODE_POOL_GET_NOWAIT
-  | DPI_MODE_POOL_GET_TIMEDWAIT
-  | DPI_MODE_POOL_GET_WAIT
+  = DPI_MODE_POOL_GET_FORCEGET  -- ^ Forces obtaining a connection, regardless of wait time.
+  | DPI_MODE_POOL_GET_NOWAIT    -- ^ Attempts to get a connection without waiting.
+  | DPI_MODE_POOL_GET_TIMEDWAIT -- ^ Waits for a connection with a specified timeout.
+  | DPI_MODE_POOL_GET_WAIT      -- ^ Waits indefinitely for a connection.
   deriving (Show, Eq, Ord, Enum, Generic)
 
 toDPIPoolGetMode :: DPIPoolGetMode -> CUInt
@@ -521,29 +523,32 @@ instance Storable DPIPoolGetMode where
   poke ptr mode =
     poke (castPtr ptr) (toDPIPoolGetMode mode)
 
+-- | Parameters used for creating a database connection.
+-- 'ConnectionCreateParams' contains various fields to configure the connection,
+-- such as authentication mode, connection class, session purity, and sharding keys.
 data ConnectionCreateParams = ConnectionCreateParams
-  { authMode :: DPIAuthMode
-  , connectionClass :: CString
-  , connectionClassLength :: CUInt
-  , purity :: DPIPurity
-  , newPassword :: CString
-  , newPasswordLength :: CUInt
-  , appContenxt :: DPIAppContext
-  , numAppContext :: CUInt
-  , externalAuth :: CInt
-  , externalHandle :: Ptr ()
-  , pool :: DPIPool
-  , tag :: CString
-  , tagLength :: CUInt
-  , matchAnyTag :: CInt
-  , outTag :: CString
-  , outTagLength :: CUInt
-  , outTagFound :: CInt
-  , shardingKeyColumn :: DPIShardingKeyColumn
-  , numShardingKeyColumns :: Word8
-  , superShardingKeyColumns :: DPIShardingKeyColumn
-  , numSuperShardingKeyColumns :: Word8
-  , outNewSession :: CInt
+  { authMode :: DPIAuthMode             -- ^ Authentication mode to use for the connection.
+  , connectionClass :: CString          -- ^ Class of the connection as a C string.
+  , connectionClassLength :: CUInt      -- ^ Length of the connection class string.
+  , purity :: DPIPurity                 -- ^ Purity level for the session.
+  , newPassword :: CString              -- ^ New password for changing the existing one.
+  , newPasswordLength :: CUInt          -- ^ Length of the new password string.
+  , appContenxt :: DPIAppContext        -- ^ Application context to attach to the session.
+  , numAppContext :: CUInt              -- ^ Number of items in the application context.
+  , externalAuth :: CInt                -- ^ Flag to indicate external authentication.
+  , externalHandle :: Ptr ()            -- ^ Pointer to an external authentication handle.
+  , pool :: DPIPool                     -- ^ Connection pool for obtaining the connection.
+  , tag :: CString                      -- ^ Tag to use when retrieving a connection.
+  , tagLength :: CUInt                  -- ^ Length of the tag string.
+  , matchAnyTag :: CInt                 -- ^ Flag to indicate if any tag should match.
+  , outTag :: CString                   -- ^ Output tag after obtaining a connection.
+  , outTagLength :: CUInt               -- ^ Length of the output tag string.
+  , outTagFound :: CInt                 -- ^ Flag to indicate if the output tag was found.
+  , shardingKeyColumn :: DPIShardingKeyColumn -- ^ Sharding key column for the connection.
+  , numShardingKeyColumns :: Word8      -- ^ Number of sharding key columns.
+  , superShardingKeyColumns :: DPIShardingKeyColumn -- ^ Super sharding key column.
+  , numSuperShardingKeyColumns :: Word8 -- ^ Number of super sharding key columns.
+  , outNewSession :: CInt               -- ^ Flag to indicate if a new session was created.
   }
   deriving (Show, Eq)
 
@@ -1805,7 +1810,7 @@ foreign import ccall "dpiData_getUint64"
 foreign import ccall "dpiData_getBool"
   dpiData_getBool :: Ptr (DPIData ReadBuffer) -> IO Int
 
--- Returns an integer where a non-zero value indicates that the data is null.
+-- | Returns an integer where a non-zero value indicates that the data is null.
 foreign import ccall "dpiData_getIsNull"
   dpiData_getIsNull :: Ptr (DPIData ReadBuffer) -> IO Int
 

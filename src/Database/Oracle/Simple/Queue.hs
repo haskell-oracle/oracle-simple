@@ -56,6 +56,8 @@ import qualified Data.ByteString.Char8 as BSC
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import Data.Proxy (Proxy (..))
 
+-- | Represents a queue in the Oracle database.
+-- The 'DPIQueue' type is a wrapper for a pointer to a DPI queue.
 newtype DPIQueue = DPIQueue (Ptr DPIQueue)
   deriving (Show, Eq)
   deriving newtype (Storable)
