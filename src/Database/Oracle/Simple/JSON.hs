@@ -130,11 +130,14 @@ newtype DPIJson = DPIJson (Ptr DPIJson)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | Represents a JSON node in Oracle, including type numbers and value buffer.
+-- The 'DPIJsonNode' type is used for handling JSON data within Oracle operations.
 data DPIJsonNode = DPIJsonNode
-  { djnOracleTypeNumber :: DPIOracleType
-  , djnNativeTypeNumber :: DPINativeType
-  , djnValue :: Ptr ReadBuffer
-  } deriving (Eq, Show)
+  { djnOracleTypeNumber :: DPIOracleType  -- ^ Oracle's type number for the JSON node.
+  , djnNativeTypeNumber :: DPINativeType  -- ^ Native type number for the JSON node.
+  , djnValue :: Ptr ReadBuffer            -- ^ Pointer to the buffer storing the node's value.
+  }
+  deriving (Eq, Show)
 
 instance Storable DPIJsonNode where
     sizeOf _ = sizeOf (undefined :: DPIOracleType)

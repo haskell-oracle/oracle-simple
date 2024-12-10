@@ -10,17 +10,17 @@
 {-# LANGUAGE DuplicateRecordFields #-}
 
 module Database.Oracle.Simple.Object (
+    genObject,
+    getObjectType,
+    getObjAttributes,
+    setObjAttribute,
+    getObjAttribute,
+    releaseObject,
+    getObjectInfo,
+    getAttributeInfo,
     DPIObjectType (..),
     DPIObject (..),
     ObjectTypeInfo (numAttributes, isCollection ),
-    genObject,
-    getObjectType,
-    releaseObject,
-    getObjAttribute,
-    setObjAttribute,
-    getObjAttributes,
-    getObjectInfo,
-    getAttributeInfo,
 ) where
 
 import Database.Oracle.Simple.Internal
@@ -36,18 +36,26 @@ import Database.Oracle.Simple.ToField
 import Database.Oracle.Simple.FromField
 import Data.Proxy (Proxy (..))
 
+-- | `DPIObjectType` is a newtype wrapper around a pointer to a DPI objectType.
+-- | It is primarily used for representing and interacting with Objects
 newtype DPIObjectType = DPIObjectType (Ptr DPIObjectType)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | `DPIObject` is a newtype wrapper around a pointer to a DPI object.
+-- | It is primarily used for representing and interacting with objects
 newtype DPIObject = DPIObject (Ptr DPIObject)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | `DPIObjectAttr` is a newtype wrapper around a pointer to a DPI Object Attribute.
+-- | It is primarily used for representing and interacting with objects
 newtype DPIObjectAttr = DPIObjectAttr (Ptr DPIObjectAttr)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
+-- | `DPIObjectAttrInfo` is a newtype wrapper around a pointer to a DPI Object Attribute info.
+-- | It is primarily used for representing and interacting with objects
 data ObjectAttrInfo = ObjectAttrInfo {
     name :: CString
   , nameLength :: CUInt
@@ -78,6 +86,7 @@ data DPIDataTypeInfo = DPIDataTypeInfo {
     , vectorFlags :: CUChar
 } deriving (Eq, Show, Generic, GStorable)
 
+-- | This data structure contains metadata about the object type
 data ObjectTypeInfo = ObjectTypeInfo {
     schema :: CString
   ,  schemaLength :: CInt
@@ -90,6 +99,7 @@ data ObjectTypeInfo = ObjectTypeInfo {
   ,  packageNameLength :: CUInt
 } deriving (Eq, Show, GStorable, Generic)
 
+-- | Returns the value of one of the object’s attributes.
 getObjAttribute :: forall a. (FromField a) => DPIObject -> DPIObjectAttr -> IO a
 getObjAttribute obj objTypeAttr = do
   alloca $ \dpiDataPtr -> do
@@ -112,6 +122,7 @@ foreign import ccall unsafe "dpiObject_getAttributeValue"
     Ptr (DPIData ReadBuffer) ->
     IO CInt
 
+-- | Sets the value of one of the object’s attributes.
 setObjAttribute :: forall a. (ToField a) => DPIObject -> DPIObjectAttr -> a -> IO ()
 setObjAttribute obj objTypeAttr val = do
   dataValue <- toField val
@@ -139,6 +150,7 @@ foreign import ccall unsafe "dpiObject_setAttributeValue"
     Ptr (DPIData WriteBuffer) ->
     IO CInt
 
+-- | Returns the list of attributes that belong to the object type.
 getObjAttributes :: DPIObjectType -> Int -> IO [DPIObjectAttr]
 getObjAttributes objType n = do
   -- objInfo <- getObjectInfo objType
@@ -156,6 +168,7 @@ foreign import ccall unsafe "dpiObjectType_getAttributes"
     Ptr DPIObjectAttr ->
     IO CInt
 
+-- | Returns information about the object type.
 getObjectInfo :: DPIObjectType -> IO ObjectTypeInfo
 getObjectInfo objType= do
   alloca $ \objectTypeInfoPtr -> do
@@ -173,6 +186,8 @@ foreign import ccall unsafe "dpiObjectType_getInfo"
 {-
 The name is uppercased! Because here Oracle seems to be case-sensitive.
 -}
+-- | Looks up an object type by name in the database and returns a reference to it.
+-- | The name is uppercased! Because here Oracle seems to be case-sensitive.
 getObjectType :: Connection -> String -> IO DPIObjectType
 getObjectType (Connection fptr) objectName_ = do
   let objectName = map toUpper objectName_ 
@@ -194,6 +209,7 @@ foreign import ccall unsafe "dpiConn_getObjectType"
     Ptr DPIObjectType ->
     IO CInt
 
+-- | Creates an object of the specified type and returns a reference to it.
 genObject :: DPIObjectType -> IO DPIObject
 genObject objType = do
   alloca $ \objectPtr -> do
@@ -208,7 +224,7 @@ foreign import ccall unsafe "dpiObjectType_createObject"
     Ptr DPIObject ->
     IO CInt
 
-
+-- | Returns information about the attribute.
 getAttributeInfo :: DPIObjectAttr -> IO ObjectAttrInfo
 getAttributeInfo objAttr = do
   alloca $ \objectAttrInfoPtr -> do
@@ -223,6 +239,7 @@ foreign import ccall unsafe "dpiObjectAttr_getInfo"
     Ptr ObjectAttrInfo ->
     IO CInt
 
+-- | Releases a reference to the object. 
 releaseObject :: DPIObject -> IO ()
 releaseObject obj = do
   throwOracleError =<< dpiObject_release obj

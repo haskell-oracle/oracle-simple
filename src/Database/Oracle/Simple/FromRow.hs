@@ -26,6 +26,9 @@ import GHC.TypeLits
 import Database.Oracle.Simple.FromField
 import Database.Oracle.Simple.Internal
 
+-- | A type class for types that can be converted from a database row.
+-- This class allows for flexible, type-safe extraction of data from rows,
+-- using a 'RowParser' to define how each field should be parsed.
 class FromRow a where
   fromRow :: RowParser a
   default fromRow :: (GFromRow (Rep a), Generic a) => RowParser a

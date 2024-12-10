@@ -26,6 +26,7 @@ import GHC.TypeLits
 import Database.Oracle.Simple.Internal
 import Database.Oracle.Simple.ToField
 
+-- | This type represents a column-oriented abstraction over SQL row writers
 newtype RowWriter a = RowWriter {runRowWriter :: DPIStmt -> StateT Column IO a}
 
 instance Functor RowWriter where
@@ -43,6 +44,7 @@ instance Monad RowWriter where
     f' <- runRowWriter f dpiStmt
     runRowWriter (g f') dpiStmt
 
+-- | The ToRow class provides a way to convert values of type 'a' into RowWriter instances that write nothing to the database.
 class ToRow a where
   toRow :: a -> RowWriter ()
   default toRow :: (GToRow (Rep a), Generic a) => a -> RowWriter ()

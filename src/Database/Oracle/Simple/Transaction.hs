@@ -133,6 +133,8 @@ commitIfNeeded conn dpiTransaction = do
   commitNeeded <- prepareCommit conn dpiTransaction
   when commitNeeded $ commitTransaction conn dpiTransaction
 
+-- | This data structure represents an Oracle database identifier,
+-- | which includes a format ID and other details such as the global transaction ID and branch qualifier.
 data DPIXid = DPIXid
   { dpixFormatId :: CLong
   , dpixGlobalTransactionId :: CString
