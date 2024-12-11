@@ -8,6 +8,7 @@
 module Database.Oracle.Simple.LOB
     ( LOBType (..)
     , LOBField (..)
+    , withLOB
     , genLOB
     , readLOB
     , writeLOB
@@ -75,6 +76,13 @@ cuintToLobType 2018 = Just NCLOB -- DPI_ORACLE_TYPE_NCLOB
 cuintToLobType 2017 = Just CLOB -- DPI_ORACLE_TYPE_CLOB
 cuintToLobType 2019 = Just BLOB -- DPI_ORACLE_TYPE_BLOB
 cuintToLobType _ = Nothing
+
+--x Higher level convenience functions x--
+withLOB :: Connection -> LOBType -> (DPILob -> IO ()) -> IO ()
+withLOB conn lobType func = do
+  lob <- genLOB conn lobType
+  func lob
+  closeLOB lob
 
 genLOB :: Connection -> LOBType -> IO DPILob
 genLOB (Connection fptr) lobType = do
@@ -334,7 +342,9 @@ readLOB lob offset maxAmount = do
                 (fromIntegral maxAmount)
                 valPtr
                 valLenPtr
-    peekCString valPtr
+    res <- peekCString valPtr
+    free valPtr
+    return res
 
 foreign import ccall unsafe "dpiLob_readBytes"
     dpiLob_readBytes
@@ -353,6 +363,16 @@ foreign import ccall unsafe "dpiLob_readBytes"
 -- offset starts at 1
 {-
 WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding, regardless of what encoding is otherwise in use by the database. The number of characters, however, is defined by the number of UCS-2 codepoints. For this reason, if a character requires more than one UCS-2 codepoint, care must be taken to account for them in the offset parameter.
+-}
+{- | 
+ e.g
+ghci> :set -XOverloadedStrings
+ghci> writeLOB lob 1 "Hello"
+ghci> dpiLobToByteString lob
+"Hello"
+ghci> writeLOB lob 6 " World!"
+ghci> dpiLobToByteString lob
+"Hello World!"
 -}
 writeLOB :: DPILob -> Int64 -> BSLC.ByteString -> IO ()
 writeLOB lob offset val = do
