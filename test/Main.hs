@@ -27,6 +27,7 @@ import Foreign (peek, Storable, with, nullFunPtr, nullPtr)
 import Foreign.C.Types (CLong(..), CUInt(..), CInt(..))
 import Foreign.C.String (newCString)
 import qualified Data.ByteString.Char8 as BSC
+import qualified Data.ByteString.Lazy.Char8 as BSLC
 
 import Database.Oracle.Simple
 
@@ -540,6 +541,52 @@ spec pool = do
             ,  "queue_table => 'TEST_QUEUE_TABLE'"
             ,  ");"
             , "END;"]
+
+    describe "Large objects" $ do
+      it "creates and closes a temporary LOB" $ \conn -> do
+        withLOB conn CLOB $ \lob -> do
+          isOpen <- isLOBResoureOpen lob
+          isOpen `shouldBe` False
+          openLOBResource lob
+          isOpen2 <- isLOBResoureOpen lob
+          isOpen2 `shouldBe` True
+          closeLOBResource lob
+          isOpen3 <- isLOBResoureOpen lob
+          isOpen3 `shouldBe` False
+
+      it "writes and reads from a LOB" $ \conn -> do
+        withLOB conn CLOB $ \lob -> do
+          let testData = "Hello, Oracle LOB!"
+          writeLOB lob 1 testData
+          result <- readLOBBytes lob 1 1024
+          result `shouldBe` testData
+
+      it "trims a LOB to a new size" $ \conn -> do
+        withLOB conn CLOB $ \lob -> do
+          let testData = "Hello, Oracle LOB!"
+          writeLOB lob 1 testData
+          prefferedChunkSize <- getLOBChunkSize lob
+          trimLOBVal lob 5
+          result <- readLOBBytes lob 1 (fromIntegral prefferedChunkSize)
+          result `shouldBe` "Hello"
+
+      it "copies a LOB" $ \conn -> do
+        withLOB conn BLOB $ \lob -> do
+          let testData = "Copy me :)"
+          writeLOB lob 1 testData
+          prefferedChunkSize <- getLOBChunkSize lob
+          
+          newLob <- copyLOB lob
+          
+          result <- readLOBBytes newLob 1 (fromIntegral prefferedChunkSize)
+          result `shouldBe` testData
+
+      it "checks LOB size" $ \conn -> do
+        withLOB conn BLOB $ \lob -> do
+          let testData = "some string"
+          writeLOB lob 1 testData
+          size <- getLOBSize lob
+          size `shouldBe` BSLC.length testData
   where
     handleOracleError action = Exc.try @OracleError action >>= either (\_ -> pure ()) (\_ -> pure ())
 
