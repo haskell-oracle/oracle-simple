@@ -15,6 +15,7 @@ module Database.Oracle.Simple.FromField
     getString,
     getBool,
     getTimestamp,
+    getLOB_,
   )
 where
 
@@ -93,6 +94,17 @@ instance (FromField a) => FromField (Maybe a) where
 instance FromField Time.UTCTime where
   fromDPINativeType _ = DPI_NATIVE_TYPE_TIMESTAMP
   fromField = dpiTimeStampToUTCTime <$> fromField
+
+instance FromField DPILob where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_LOB
+  fromField = FieldParser getLOB_
+
+-- Question: For large object should the type be lazy bytestring
+foreign import ccall "dpiData_getLOB"
+  dpiData_getLOB :: Ptr (DPIData ReadBuffer) -> IO DPILob
+
+getLOB_ :: ReadDPIBuffer DPILob
+getLOB_ = dpiData_getLOB 
 
 -- | Converts a 'DPITimestamp' to a 'Time.UTCTime'.
 -- This function is useful for working with timestamps in Haskell's time library.

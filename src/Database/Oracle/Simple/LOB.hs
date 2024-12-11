@@ -6,8 +6,9 @@
 --
 -- Implementation of handler functions for oracle's large objects (CLOB, BLOB, NCLOB, BFILE)
 module Database.Oracle.Simple.LOB
-  ( LOB
-  , LOBType (..)
+  ( 
+    LOBType (..)
+  , LOBField (..)
   , genLOB
   , readLOB
   , writeLOB
@@ -27,24 +28,44 @@ module Database.Oracle.Simple.LOB
   , getLOBSize
   , releaseLOB
   , trimLOBVal
+  , dpiLobToByteString
   ) where
 
 import qualified Data.ByteString.Lazy.Char8 as BSLC
 import Database.Oracle.Simple.Internal
+import Database.Oracle.Simple.FromField
 import Foreign
 import Foreign.C.String
 import Foreign.C.Types (CInt (..), CUInt (..), CULong (..))
-
-newtype DPILob = DPILob (Ptr DPILob)
-  deriving (Show, Eq)
-  deriving newtype (Storable)
-
-newtype LOB = LOB (ForeignPtr DPILob)
-  deriving (Show, Eq)
+import Control.Monad ((<=<), when)
+import Data.Coerce (coerce)
 
 data LOBType = CLOB | NCLOB | BLOB
   deriving (Show, Eq)
 
+newtype LOBField = LOBField { unLOBField :: BSLC.ByteString }
+    deriving (Show, Eq)
+
+instance FromField LOBField where
+  fromDPINativeType _ = DPI_NATIVE_TYPE_LOB
+  fromField = coerce $ FieldParser (dpiLobToByteString <=< getLOB_)
+
+dpiLobToByteString :: DPILob -> IO BSLC.ByteString
+dpiLobToByteString lob = do
+  lobSize <- getLOBSize lob
+  chunkSize <- getLOBChunkSize lob
+  readInChunks lob (fromIntegral chunkSize) 1 lobSize
+
+readInChunks :: DPILob -> Int64 -> Int64 -> Int64 -> IO BSLC.ByteString
+readInChunks lob chunkSize offset remaining
+  | remaining <= 0 = return BSLC.empty
+  | otherwise = do
+        res <- readLOBBytes lob offset chunkSize
+        let sizeRead = BSLC.length res
+        when (sizeRead == 0) $ closeLOB lob
+        rest <- readInChunks lob chunkSize (offset + sizeRead) (remaining - sizeRead)
+        return $ res `BSLC.append` rest
+      
 lobTypeToCUInt :: LOBType -> CUInt
 lobTypeToCUInt CLOB = dpiOracleTypeToUInt DPI_ORACLE_TYPE_CLOB
 lobTypeToCUInt NCLOB = dpiOracleTypeToUInt DPI_ORACLE_TYPE_NCLOB
@@ -56,13 +77,12 @@ cuintToLobType 2017 = Just CLOB -- DPI_ORACLE_TYPE_CLOB
 cuintToLobType 2019 = Just BLOB -- DPI_ORACLE_TYPE_BLOB
 cuintToLobType _ = Nothing
 
-genLOB :: Connection -> LOBType -> IO LOB
+genLOB :: Connection -> LOBType -> IO DPILob
 genLOB (Connection fptr) lobType = do
   withForeignPtr fptr $ \conn -> do
     alloca $ \dpiLobPtr -> do
       throwOracleError =<< dpiConn_newTempLob conn (lobTypeToCUInt lobType) dpiLobPtr
-      f <- newForeignPtr_ dpiLobPtr
-      return (LOB f)
+      peek dpiLobPtr
 
 foreign import ccall unsafe "dpiConn_newTempLob"
   dpiConn_newTempLob
@@ -74,47 +94,48 @@ foreign import ccall unsafe "dpiConn_newTempLob"
     -- ^ dpiLob **
     -> IO CInt
 
-closeLOB :: LOB -> IO ()
-closeLOB (LOB lob) = finalizeForeignPtr lob
+closeLOB :: DPILob -> IO ()
+closeLOB lob = throwOracleError =<< dpiLob_close lob
 
-closeLOBResource :: LOB -> IO ()
-closeLOBResource (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
-    throwOracleError =<< dpiLob_closeResource lob
+closeLOBResource :: DPILob -> IO ()
+closeLOBResource lob = throwOracleError =<< dpiLob_closeResource lob
 
-foreign import ccall unsafe "dpiLob_closeResource"
-  dpiLob_closeResource
-    :: Ptr DPILob
+foreign import ccall unsafe "dpiLob_close"
+  dpiLob_close
+    :: DPILob
     -- ^ dpiLob *
     -> IO CInt
 
-copyLOB :: LOB -> IO LOB
-copyLOB (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
-    alloca $ \dpiLobPtr -> do
-      throwOracleError =<< dpiLob_copy lob dpiLobPtr
-      f <- newForeignPtr_ dpiLobPtr
-      return (LOB f)
+foreign import ccall unsafe "dpiLob_closeResource"
+  dpiLob_closeResource
+    :: DPILob
+    -- ^ dpiLob *
+    -> IO CInt
+
+copyLOB :: DPILob -> IO DPILob
+copyLOB lob = do
+  alloca $ \dpiLobPtr -> do
+    throwOracleError =<< dpiLob_copy lob dpiLobPtr
+    peek dpiLobPtr
 
 foreign import ccall unsafe "dpiLob_copy"
   dpiLob_copy
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> Ptr DPILob
     -- ^ dpiLob **
     -> IO CInt
 
-getLOBBufferSize :: LOB -> Int64 -> IO Int64
-getLOBBufferSize (LOB fptr) sizeInChars = do
-  withForeignPtr fptr $ \lob -> do
-    alloca $ \sizeInBytesPtr -> do
-      throwOracleError
-        =<< dpiLob_getBufferSize lob (CULong $ fromIntegral sizeInChars) sizeInBytesPtr
-      fromIntegral <$> peek sizeInBytesPtr
+getLOBBufferSize :: DPILob -> Int64 -> IO Int64
+getLOBBufferSize lob sizeInChars = do
+  alloca $ \sizeInBytesPtr -> do
+    throwOracleError
+      =<< dpiLob_getBufferSize lob (CULong $ fromIntegral sizeInChars) sizeInBytesPtr
+    fromIntegral <$> peek sizeInBytesPtr
 
 foreign import ccall unsafe "dpiLob_getBufferSize"
   dpiLob_getBufferSize
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> CULong
     -- ^ sizeInChars
@@ -122,29 +143,27 @@ foreign import ccall unsafe "dpiLob_getBufferSize"
     -- ^ sizeInBytes
     -> IO CInt
 
-getLOBChunkSize :: LOB -> IO Int
-getLOBChunkSize (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
-    alloca $ \sizePtr -> do
-      throwOracleError
-        =<< dpiLob_getChunkSize lob sizePtr
-      fromIntegral <$> peek sizePtr
+getLOBChunkSize :: DPILob -> IO Int
+getLOBChunkSize lob = do
+  alloca $ \sizePtr -> do
+    throwOracleError
+      =<< dpiLob_getChunkSize lob sizePtr
+    fromIntegral <$> peek sizePtr
 
 foreign import ccall unsafe "dpiLob_getChunkSize"
   dpiLob_getChunkSize
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> Ptr CUInt
     -- ^ uint32_t size
     -> IO CInt
 
-getLOBDirectoryAndFile :: LOB -> IO (String, String)
-getLOBDirectoryAndFile (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
-    alloca $ \directoryAliasPtr -> do
-      alloca $ \directoryAliasLenPtr -> do
-        alloca $ \fileNamePtr -> do
-          alloca $ \fileNameLenPtr -> do
+getLOBDirectoryAndFile :: DPILob -> IO (String, String)
+getLOBDirectoryAndFile lob = do
+  alloca $ \directoryAliasPtr -> do
+    alloca $ \directoryAliasLenPtr -> do
+      alloca $ \fileNamePtr -> do
+        alloca $ \fileNameLenPtr -> do
             throwOracleError
               =<< dpiLob_getDirectoryAndFileName
                 lob
@@ -158,7 +177,7 @@ getLOBDirectoryAndFile (LOB fptr) = do
 
 foreign import ccall unsafe "dpiLob_getDirectoryAndFileName"
   dpiLob_getDirectoryAndFileName
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> Ptr CString
     -- ^ const char **directoryAlias
@@ -170,9 +189,8 @@ foreign import ccall unsafe "dpiLob_getDirectoryAndFileName"
     -- ^ uint32_t *fileNameLength
     -> IO CInt
 
-setLOBDirectoryAndFile :: LOB -> String -> String -> IO ()
-setLOBDirectoryAndFile (LOB fptr) directoryName fileName = do
-  withForeignPtr fptr $ \lob -> do
+setLOBDirectoryAndFile :: DPILob -> String -> String -> IO ()
+setLOBDirectoryAndFile lob directoryName fileName = do
     withCStringLen directoryName $ \(dirNamePtr, dirNameLen) -> do
       withCStringLen fileName $ \(fNamePtr, fNameLen) -> do
         throwOracleError
@@ -185,7 +203,7 @@ setLOBDirectoryAndFile (LOB fptr) directoryName fileName = do
 
 foreign import ccall unsafe "dpiLob_setDirectoryAndFileName"
   dpiLob_setDirectoryAndFileName
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> CString
     -- ^ const char *directoryAlias
@@ -197,9 +215,8 @@ foreign import ccall unsafe "dpiLob_setDirectoryAndFileName"
     -- ^ uint32_t fileNameLength
     -> IO CInt
 
-doesLOBFileExists :: LOB -> IO Bool
-doesLOBFileExists (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
+doesLOBFileExists :: DPILob -> IO Bool
+doesLOBFileExists lob = do
     alloca $ \isOpenPtr -> do
       throwOracleError
         =<< dpiLob_getFileExists lob isOpenPtr
@@ -208,15 +225,14 @@ doesLOBFileExists (LOB fptr) = do
 
 foreign import ccall unsafe "dpiLob_getFileExists"
   dpiLob_getFileExists
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> Ptr CInt
     -- ^ int *isOpen
     -> IO CInt
 
-isLOBResoureOpen :: LOB -> IO Bool
-isLOBResoureOpen (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
+isLOBResoureOpen :: DPILob -> IO Bool
+isLOBResoureOpen lob = do
     alloca $ \isOpenPtr -> do
       throwOracleError
         =<< dpiLob_getIsResourceOpen lob isOpenPtr
@@ -225,7 +241,7 @@ isLOBResoureOpen (LOB fptr) = do
 
 foreign import ccall unsafe "dpiLob_getIsResourceOpen"
   dpiLob_getIsResourceOpen
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> Ptr CInt
     -- ^ int *isOpen
@@ -234,9 +250,8 @@ foreign import ccall unsafe "dpiLob_getIsResourceOpen"
 {-
 WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding, regardless of what encoding is otherwise in use by the database. The number of characters, however, is defined by the number of UCS-2 codepoints. For this reason, if a character requires more than one UCS-2 codepoint, the size returned will be inaccurate and care must be taken to account for the difference.
 -}
-getLOBSize :: LOB -> IO Int64
-getLOBSize (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
+getLOBSize :: DPILob -> IO Int64
+getLOBSize lob = do
     alloca $ \sizePtr -> do
       throwOracleError
         =<< dpiLob_getSize lob sizePtr
@@ -244,15 +259,14 @@ getLOBSize (LOB fptr) = do
 
 foreign import ccall unsafe "dpiLob_getSize"
   dpiLob_getSize
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> Ptr CULong
     -- ^ uint64_t *size
     -> IO CInt
 
-getLOBType :: LOB -> IO LOBType
-getLOBType (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
+getLOBType :: DPILob -> IO LOBType
+getLOBType lob = do
     alloca $ \numTypePtr -> do
       throwOracleError
         =<< dpiLob_getType lob numTypePtr
@@ -263,67 +277,69 @@ getLOBType (LOB fptr) = do
 
 foreign import ccall unsafe "dpiLob_getType"
   dpiLob_getType
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> Ptr CUInt
     -- ^ dpiOracleTypeNum numType
     -> IO CInt
 
-openLOBResource :: LOB -> IO ()
-openLOBResource (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
+openLOBResource :: DPILob -> IO ()
+openLOBResource lob = do
     throwOracleError
       =<< dpiLob_openResource lob
 
 foreign import ccall unsafe "dpiLob_openResource"
   dpiLob_openResource
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> IO CInt
 
-releaseLOB :: LOB -> IO ()
-releaseLOB (LOB fptr) = do
-  withForeignPtr fptr $ \lob -> do
+releaseLOB :: DPILob -> IO ()
+releaseLOB lob = do
     throwOracleError
       =<< dpiLob_release lob
 
 foreign import ccall unsafe "dpiLob_release"
   dpiLob_release
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> IO CInt
 
 -- offset starts at 1
-readLOBBytes :: LOB -> Int64 -> Int64 -> IO BSLC.ByteString
-readLOBBytes (LOB fptr) offset maxAmount = do
-  withForeignPtr fptr $ \lob -> do
-    alloca $ \valPtr -> do
-      throwOracleError
-        =<< dpiLob_readBytes
-          lob
-          (fromIntegral offset)
-          (fromIntegral maxAmount)
-          valPtr
-          nullPtr -- here string length will come but we don't need it
-      BSLC.pack <$> peekCString valPtr
+readLOBBytes :: DPILob -> Int64 -> Int64 -> IO BSLC.ByteString
+readLOBBytes lob offset maxAmount = do
+    valPtr <- callocBytes (fromIntegral maxAmount)
+    alloca $ \valLenPtr -> do
+        poke valLenPtr (fromIntegral maxAmount)
+        throwOracleError
+          =<< dpiLob_readBytes
+            lob
+            (fromIntegral offset)
+            (fromIntegral maxAmount)
+            valPtr
+            valLenPtr
+        res <- BSLC.pack <$> peekCString valPtr
+        free valPtr
+        return res
 
 -- offset starts at 1
-readLOB :: LOB -> Int64 -> Int64 -> IO String
-readLOB (LOB fptr) offset maxAmount = do
-  withForeignPtr fptr $ \lob -> do
-    alloca $ \valPtr -> do
-      throwOracleError
-        =<< dpiLob_readBytes
-          lob
-          (fromIntegral offset)
-          (fromIntegral maxAmount)
-          valPtr
-          nullPtr -- here string length will come but we don't need it
-      peekCString valPtr
+readLOB :: DPILob -> Int64 -> Int64 -> IO String
+readLOB lob offset maxAmount = do
+    valPtr <- callocBytes (fromIntegral maxAmount)
+    alloca $ \valLenPtr -> do
+        poke valLenPtr (fromIntegral maxAmount)
+        throwOracleError
+          =<< dpiLob_readBytes
+            lob
+            (fromIntegral offset)
+            (fromIntegral maxAmount)
+            valPtr
+            valLenPtr
+    peekCString valPtr
 
 foreign import ccall unsafe "dpiLob_readBytes"
   dpiLob_readBytes
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> CULong
     -- ^  uint64_t offset
@@ -339,9 +355,8 @@ foreign import ccall unsafe "dpiLob_readBytes"
 {-
 WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding, regardless of what encoding is otherwise in use by the database. The number of characters, however, is defined by the number of UCS-2 codepoints. For this reason, if a character requires more than one UCS-2 codepoint, care must be taken to account for them in the offset parameter.
 -}
-writeLOB :: LOB -> Int64 -> BSLC.ByteString -> IO ()
-writeLOB (LOB fptr) offset val = do
-  withForeignPtr fptr $ \lob -> do
+writeLOB :: DPILob -> Int64 -> BSLC.ByteString -> IO ()
+writeLOB lob offset val = do
     valPtr <- newCString (BSLC.unpack val)
     let valPtrLen = BSLC.length val
     throwOracleError
@@ -353,7 +368,7 @@ writeLOB (LOB fptr) offset val = do
 
 foreign import ccall unsafe "dpiLob_writeBytes"
   dpiLob_writeBytes
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> CULong
     -- ^  uint64_t offset
@@ -363,16 +378,15 @@ foreign import ccall unsafe "dpiLob_writeBytes"
     -- ^  uint64_t valueLength
     -> IO CInt
 
-setLOBVal :: LOB -> String -> IO ()
-setLOBVal (LOB fptr) val = do
-  withForeignPtr fptr $ \lob -> do
+setLOBVal :: DPILob -> String -> IO ()
+setLOBVal lob val = do
     withCStringLen val $ \(valPtr, valPtrLen) -> do
       throwOracleError
         =<< dpiLob_setFromBytes lob valPtr (fromIntegral valPtrLen)
 
 foreign import ccall unsafe "dpiLob_setFromBytes"
   dpiLob_setFromBytes
-    :: Ptr DPILob
+    :: DPILob
     -- ^ dpiLob *
     -> CString
     -- ^ const char *value
@@ -380,15 +394,14 @@ foreign import ccall unsafe "dpiLob_setFromBytes"
     -- ^ uint64_t value
     -> IO CInt
 
-trimLOBVal :: LOB -> Int64 -> IO ()
-trimLOBVal (LOB fptr) newSize = do
-  withForeignPtr fptr $ \lob -> do
+trimLOBVal :: DPILob -> Int64 -> IO ()
+trimLOBVal lob newSize = do
     throwOracleError
       =<< dpiLob_trim lob (fromIntegral newSize)
 
 foreign import ccall unsafe "dpiLob_trim"
   dpiLob_trim
-    :: Ptr DPILob
+    :: DPILob
     -> CULong
     -- ^ uint64_t newSize
     -> IO CInt
