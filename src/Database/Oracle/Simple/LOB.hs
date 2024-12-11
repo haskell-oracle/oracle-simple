@@ -40,9 +40,11 @@ import Foreign
 import Foreign.C.String
 import Foreign.C.Types (CInt (..), CUInt (..), CULong (..))
 
+-- | Represents the types of Oracle Large Objects (LOBs) such as CLOB, NCLOB, and BLOB.
 data LOBType = CLOB | NCLOB | BLOB
     deriving (Show, Eq)
 
+-- | Wraps a lazy ByteString to represent LOB fields. For writing FromField instance
 newtype LOBField = LOBField {unLOBField :: BSLC.ByteString}
     deriving (Show, Eq)
 
@@ -50,6 +52,7 @@ instance FromField LOBField where
     fromDPINativeType _ = DPI_NATIVE_TYPE_LOB
     fromField = coerce $ FieldParser (dpiLobToByteString <=< getLOB_)
 
+-- | Converts a LOB to a lazy ByteString for easier manipulation and viewing.
 dpiLobToByteString :: DPILob -> IO BSLC.ByteString
 dpiLobToByteString lob = do
     lobSize <- getLOBSize lob
@@ -77,13 +80,15 @@ cuintToLobType 2017 = Just CLOB -- DPI_ORACLE_TYPE_CLOB
 cuintToLobType 2019 = Just BLOB -- DPI_ORACLE_TYPE_BLOB
 cuintToLobType _ = Nothing
 
---x Higher level convenience functions x--
+-- x Higher level convenience functions x--
+-- | Executes a function with a temporary LOB, ensuring the LOB is properly closed afterwards.
 withLOB :: Connection -> LOBType -> (DPILob -> IO ()) -> IO ()
 withLOB conn lobType func = do
-  lob <- genLOB conn lobType
-  func lob
-  closeLOB lob
+    lob <- genLOB conn lobType
+    func lob
+    closeLOB lob
 
+-- | Executes a function with a temporary LOB, ensuring the LOB is properly closed afterwards.
 genLOB :: Connection -> LOBType -> IO DPILob
 genLOB (Connection fptr) lobType = do
     withForeignPtr fptr $ \conn -> do
@@ -101,9 +106,11 @@ foreign import ccall unsafe "dpiConn_newTempLob"
         -- ^ dpiLob **
         -> IO CInt
 
+-- | Closes a LOB to release associated resources.
 closeLOB :: DPILob -> IO ()
 closeLOB lob = throwOracleError =<< dpiLob_close lob
 
+-- | Closes an open LOB resource without releasing the LOB.
 closeLOBResource :: DPILob -> IO ()
 closeLOBResource lob = throwOracleError =<< dpiLob_closeResource lob
 
@@ -119,6 +126,7 @@ foreign import ccall unsafe "dpiLob_closeResource"
         -- ^ dpiLob *
         -> IO CInt
 
+-- | Copies a LOB, creating a new LOB with the same content.
 copyLOB :: DPILob -> IO DPILob
 copyLOB lob = do
     alloca $ \dpiLobPtr -> do
@@ -133,6 +141,7 @@ foreign import ccall unsafe "dpiLob_copy"
         -- ^ dpiLob **
         -> IO CInt
 
+-- | Gets the buffer size needed to read a specified number of characters from a LOB.
 getLOBBufferSize :: DPILob -> Int64 -> IO Int64
 getLOBBufferSize lob sizeInChars = do
     alloca $ \sizeInBytesPtr -> do
@@ -150,6 +159,7 @@ foreign import ccall unsafe "dpiLob_getBufferSize"
         -- ^ sizeInBytes
         -> IO CInt
 
+-- | Retrieves the chunk size for LOB read/write operations.
 getLOBChunkSize :: DPILob -> IO Int
 getLOBChunkSize lob = do
     alloca $ \sizePtr -> do
@@ -165,6 +175,7 @@ foreign import ccall unsafe "dpiLob_getChunkSize"
         -- ^ uint32_t size
         -> IO CInt
 
+-- | Gets the directory and file name associated with a BFILE LOB.
 getLOBDirectoryAndFile :: DPILob -> IO (String, String)
 getLOBDirectoryAndFile lob = do
     alloca $ \directoryAliasPtr -> do
@@ -196,6 +207,7 @@ foreign import ccall unsafe "dpiLob_getDirectoryAndFileName"
         -- ^ uint32_t *fileNameLength
         -> IO CInt
 
+-- | Sets the directory and file name for a BFILE LOB.
 setLOBDirectoryAndFile :: DPILob -> String -> String -> IO ()
 setLOBDirectoryAndFile lob directoryName fileName = do
     withCStringLen directoryName $ \(dirNamePtr, dirNameLen) -> do
@@ -222,6 +234,7 @@ foreign import ccall unsafe "dpiLob_setDirectoryAndFileName"
         -- ^ uint32_t fileNameLength
         -> IO CInt
 
+-- | Checks if the file associated with a BFILE LOB exists.
 doesLOBFileExists :: DPILob -> IO Bool
 doesLOBFileExists lob = do
     alloca $ \isOpenPtr -> do
@@ -238,6 +251,7 @@ foreign import ccall unsafe "dpiLob_getFileExists"
         -- ^ int *isOpen
         -> IO CInt
 
+-- | Checks if the LOB resource is currently open.
 isLOBResoureOpen :: DPILob -> IO Bool
 isLOBResoureOpen lob = do
     alloca $ \isOpenPtr -> do
@@ -257,6 +271,7 @@ foreign import ccall unsafe "dpiLob_getIsResourceOpen"
 {-
 WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding, regardless of what encoding is otherwise in use by the database. The number of characters, however, is defined by the number of UCS-2 codepoints. For this reason, if a character requires more than one UCS-2 codepoint, the size returned will be inaccurate and care must be taken to account for the difference.
 -}
+-- | Retrieves the size of a LOB in characters or bytes, depending on the LOB type.
 getLOBSize :: DPILob -> IO Int64
 getLOBSize lob = do
     alloca $ \sizePtr -> do
@@ -272,6 +287,7 @@ foreign import ccall unsafe "dpiLob_getSize"
         -- ^ uint64_t *size
         -> IO CInt
 
+-- | Retrieves the type of a given LOB.
 getLOBType :: DPILob -> IO LOBType
 getLOBType lob = do
     alloca $ \numTypePtr -> do
@@ -290,6 +306,7 @@ foreign import ccall unsafe "dpiLob_getType"
         -- ^ dpiOracleTypeNum numType
         -> IO CInt
 
+-- | Opens a LOB resource, preparing it for subsequent operations.
 openLOBResource :: DPILob -> IO ()
 openLOBResource lob = do
     throwOracleError
@@ -301,6 +318,7 @@ foreign import ccall unsafe "dpiLob_openResource"
         -- ^ dpiLob *
         -> IO CInt
 
+-- | Releases a LOB, freeing associated resources.
 releaseLOB :: DPILob -> IO ()
 releaseLOB lob = do
     throwOracleError
@@ -313,6 +331,7 @@ foreign import ccall unsafe "dpiLob_release"
         -> IO CInt
 
 -- offset starts at 1
+-- | Reads a specified number of bytes from a LOB starting at a given offset.
 readLOBBytes :: DPILob -> Int64 -> Int64 -> IO BSLC.ByteString
 readLOBBytes lob offset maxAmount = do
     valPtr <- callocBytes (fromIntegral maxAmount)
@@ -330,6 +349,7 @@ readLOBBytes lob offset maxAmount = do
         return res
 
 -- offset starts at 1
+-- | Reads a specified number of characters from a LOB starting at a given offset.
 readLOB :: DPILob -> Int64 -> Int64 -> IO String
 readLOB lob offset maxAmount = do
     valPtr <- callocBytes (fromIntegral maxAmount)
@@ -364,16 +384,17 @@ foreign import ccall unsafe "dpiLob_readBytes"
 {-
 WARNING: for historical reasons, Oracle stores CLOBs and NCLOBs using the UTF-16 encoding, regardless of what encoding is otherwise in use by the database. The number of characters, however, is defined by the number of UCS-2 codepoints. For this reason, if a character requires more than one UCS-2 codepoint, care must be taken to account for them in the offset parameter.
 -}
-{- | 
- e.g
-ghci> :set -XOverloadedStrings
-ghci> writeLOB lob 1 "Hello"
-ghci> dpiLobToByteString lob
-"Hello"
-ghci> writeLOB lob 6 " World!"
-ghci> dpiLobToByteString lob
-"Hello World!"
--}
+
+-- |
+--  e.g
+-- ghci> :set -XOverloadedStrings
+-- ghci> writeLOB lob 1 "Hello"
+-- ghci> dpiLobToByteString lob
+-- "Hello"
+-- ghci> writeLOB lob 6 " World!"
+-- ghci> dpiLobToByteString lob
+-- "Hello World!"
+-- | Writes a ByteString to a LOB starting at a given offset.
 writeLOB :: DPILob -> Int64 -> BSLC.ByteString -> IO ()
 writeLOB lob offset val = do
     valPtr <- newCString (BSLC.unpack val)
@@ -397,6 +418,7 @@ foreign import ccall unsafe "dpiLob_writeBytes"
         -- ^  uint64_t valueLength
         -> IO CInt
 
+-- | Sets the value of a LOB from a given string.
 setLOBVal :: DPILob -> String -> IO ()
 setLOBVal lob val = do
     withCStringLen val $ \(valPtr, valPtrLen) -> do
@@ -413,6 +435,7 @@ foreign import ccall unsafe "dpiLob_setFromBytes"
         -- ^ uint64_t value
         -> IO CInt
 
+-- | Trims the LOB to a specified size, effectively removing excess data.
 trimLOBVal :: DPILob -> Int64 -> IO ()
 trimLOBVal lob newSize = do
     throwOracleError
