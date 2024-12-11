@@ -15,7 +15,6 @@ import qualified Data.Text as T
 import Data.Time (LocalTime (..), TimeOfDay (..), TimeZone (..), UTCTime (..), ZonedTime (..), toGregorian, utc, utcToZonedTime)
 import Foreign.Marshal.Utils (fromBool)
 import Numeric.Natural (Natural)
-
 import Database.Oracle.Simple.Internal
 
 -- | This class provides a way to write values of any type to a database buffer,

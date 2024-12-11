@@ -29,6 +29,7 @@ module Database.Oracle.Simple.Internal
     DPIModeExec (..),
     DPIConn (..),
     DPIContext (..),
+    DPILob (..),
     DPITimestamp (..),
     DPIOracleType (..),
     DPICommonCreateParams (..),
@@ -78,6 +79,7 @@ module Database.Oracle.Simple.Internal
     dpiConn_close_finalizer,
     dpiConn_release_finalizer,
     dpiNativeTypeToUInt,
+    dpiOracleTypeToUInt,
   )
 where
 
@@ -130,6 +132,10 @@ newtype DPIContext = DPIContext (Ptr DPIContext)
 -- | A newtype wrapper for a pointer to a DPI sharding key column.
 -- This type is used when working with sharded databases and their associated keys.
 newtype DPIShardingKeyColumn = DPIShardingKeyColumn (Ptr DPIShardingKeyColumn)
+  deriving (Show, Eq)
+  deriving newtype (Storable)
+
+newtype DPILob = DPILob (Ptr DPILob)
   deriving (Show, Eq)
   deriving newtype (Storable)
 
