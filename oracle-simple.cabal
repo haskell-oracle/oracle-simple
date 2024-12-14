@@ -7,8 +7,8 @@ bug-reports:         https://github.com/haskell-oracle/oracle-simple
 license:             MIT
 license-file:        LICENSE
 author:              David Johnson
-maintainer:          djohnson.m@gmail.com, khandkararjun@gmail.com
-copyright:           H-E-B (c) 2024
+maintainer:          code@dmj.io, khandkararjun@gmail.com
+copyright:           H-E-B (c) 2025
 category:            Database
 build-type:          Simple
 extra-source-files:  CHANGELOG.md

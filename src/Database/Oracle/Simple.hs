@@ -4,9 +4,9 @@
 
 -- |
 -- Module:      Database.Oracle.Simple
--- Copyright:   H-E-B (c) 2024.
+-- Copyright:   H-E-B (c) 2025.
 -- License:     BSD3
--- Maintainer:  David Johnson <djohnson.m@gmail.com>, khandkararjun@gmail.com
+-- Maintainer:  David Johnson <code@dmj.io>, khandkararjun@gmail.com
 -- Stability:   experimental
 --
 -- A mid-level client library for the Oracle database, aimed at ease of
