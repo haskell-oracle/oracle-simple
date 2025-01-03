@@ -154,6 +154,7 @@ data AdditionalConnectionParams = AdditionalConnectionParams
   , waitTimeout :: Natural            -- ^ Timeout for waiting to obtain a session.
   , maxLifetimeSession :: Natural     -- ^ Maximum lifetime of a session in the pool.
   , maxSessionsPerShard :: Natural    -- ^ Maximum number of sessions per shard.
+  , authMode :: DPIAuthMode
   }
   deriving (Eq, Ord, Show)
 
@@ -173,6 +174,7 @@ defaultAdditionalConnectionParams =
     , waitTimeout = 0
     , maxLifetimeSession = 0
     , maxSessionsPerShard = 0
+    , authMode = DPI_MODE_AUTH_DEFAULT 
     }
 
 -- | Connection parameters type
@@ -193,8 +195,24 @@ connectDPI params = do
     withCStringLen (user params) $ \(userCString, fromIntegral -> userLen) ->
       withCStringLen (pass params) $ \(passCString, fromIntegral -> passLen) ->
         withCStringLen (connString params) $ \(connCString, fromIntegral -> connLen) -> do
-          throwOracleError
-            =<< dpiConn_create ctx userCString userLen passCString passLen connCString connLen nullPtr nullPtr connPtr
+          let connCreate paramsPtr = 
+                        dpiConn_create 
+                            ctx 
+                            userCString userLen passCString passLen connCString connLen nullPtr paramsPtr connPtr
+          status <-
+            case additionalParams params of
+              Nothing -> connCreate nullPtr
+              Just addParams ->
+                withConnCreateParams $ \defaultConnParams -> do
+                    let newConnParams = defaultConnParams { 
+                        dpi_authMode = authMode addParams
+                        -- New fields can be added here
+                      }
+                    alloca $ \newConnParamsPtr -> do 
+                      poke newConnParamsPtr newConnParams
+                      connCreate newConnParamsPtr
+
+          throwOracleError status
           peek connPtr
 
 {- | The order that the finalizers are declared in is very important
@@ -248,7 +266,7 @@ data DPIAuthMode
   | DPI_MODE_AUTH_SYSDGD -- 0x00040000
   | DPI_MODE_AUTH_SYSKMT -- 0x00080000
   | DPI_MODE_AUTH_SYSRAC -- 0x00100000
-  deriving (Show, Eq)
+  deriving (Show, Eq, Ord)
 
 toDPIAuthMode :: DPIAuthMode -> CInt
 toDPIAuthMode DPI_MODE_AUTH_DEFAULT = 0x00000000
@@ -533,13 +551,13 @@ instance Storable DPIPoolGetMode where
 -- 'ConnectionCreateParams' contains various fields to configure the connection,
 -- such as authentication mode, connection class, session purity, and sharding keys.
 data ConnectionCreateParams = ConnectionCreateParams
-  { authMode :: DPIAuthMode             -- ^ Authentication mode to use for the connection.
+  { dpi_authMode :: DPIAuthMode         -- ^ Authentication mode to use for the connection.
   , connectionClass :: CString          -- ^ Class of the connection as a C string.
   , connectionClassLength :: CUInt      -- ^ Length of the connection class string.
   , purity :: DPIPurity                 -- ^ Purity level for the session.
   , newPassword :: CString              -- ^ New password for changing the existing one.
   , newPasswordLength :: CUInt          -- ^ Length of the new password string.
-  , appContenxt :: DPIAppContext        -- ^ Application context to attach to the session.
+  , appContenxt :: Ptr DPIAppContext    -- ^ Application context to attach to the session.
   , numAppContext :: CUInt              -- ^ Number of items in the application context.
   , externalAuth :: CInt                -- ^ Flag to indicate external authentication.
   , externalHandle :: Ptr ()            -- ^ Pointer to an external authentication handle.
@@ -552,7 +570,7 @@ data ConnectionCreateParams = ConnectionCreateParams
   , outTagFound :: CInt                 -- ^ Flag to indicate if the output tag was found.
   , shardingKeyColumn :: DPIShardingKeyColumn -- ^ Sharding key column for the connection.
   , numShardingKeyColumns :: Word8      -- ^ Number of sharding key columns.
-  , superShardingKeyColumns :: DPIShardingKeyColumn -- ^ Super sharding key column.
+  , superShardingKeyColumns :: Ptr DPIShardingKeyColumn -- ^ Super sharding key column.
   , numSuperShardingKeyColumns :: Word8 -- ^ Number of super sharding key columns.
   , outNewSession :: CInt               -- ^ Flag to indicate if a new session was created.
   }
@@ -575,7 +593,7 @@ instance Storable ConnectionCreateParams where
     peek ptr = do
       let base = castPtr ptr
       ConnectionCreateParams
-        <$> peek (base `plusPtr` 0)                                 -- authMode
+        <$> peek (base `plusPtr` 0)                                 -- dpi_authMode
         <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode)) -- connectionClass
         <*> peek (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
                        `plusPtr` sizeOf (undefined :: CString))     -- connectionClassLength
@@ -715,7 +733,7 @@ instance Storable ConnectionCreateParams where
 
     poke ptr ConnectionCreateParams{..} = do
       let base = castPtr ptr
-      poke (base `plusPtr` 0) authMode
+      poke (base `plusPtr` 0) dpi_authMode
       poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode)) connectionClass
       poke (base `plusPtr` sizeOf (undefined :: DPIAuthMode) 
               `plusPtr` sizeOf (undefined :: CString)) connectionClassLength
@@ -852,7 +870,7 @@ instance Storable ConnectionCreateParams where
               `plusPtr` sizeOf (undefined :: DPIPool)
               `plusPtr` (2 * sizeOf (undefined :: DPIShardingKeyColumn))
               `plusPtr` (2 * sizeOf (undefined :: Word8))) outNewSession
-
+              
 -- | Common parameters for creating DPI resources.
 -- The 'DPICommonCreateParams' data type includes settings like encoding, edition,
 -- and driver details.

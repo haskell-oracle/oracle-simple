@@ -297,22 +297,14 @@ spec pool = do
             result `shouldBe` dPIPoolCreateParams
         it "ConnectionCreateParams" $ \_ -> do
             someCString <- newCString "hello"
-            let dPIAppContext = DPIAppContext {
-              namespaceName = someCString
-            , namespaceNameLength = CUInt 1
-            , name = someCString
-            , nameLength = CUInt 1
-            , value = someCString
-            , valueLength = CUInt 1
-            }
             let connectionCreateParams = ConnectionCreateParams {
-              authMode = DPI_MODE_AUTH_DEFAULT
+              dpi_authMode = DPI_MODE_AUTH_DEFAULT
             , connectionClass = someCString
             , connectionClassLength = CUInt 1
             , purity = DPI_PURITY_DEFAULT
             , newPassword = someCString
             , newPasswordLength = CUInt 1
-            , appContenxt = dPIAppContext
+            , appContenxt = nullPtr
             , numAppContext = CUInt 1
             , externalAuth = CInt 1
             , externalHandle = nullPtr
@@ -325,7 +317,7 @@ spec pool = do
             , outTagFound = CInt 1
             , shardingKeyColumn = DPIShardingKeyColumn nullPtr
             , numShardingKeyColumns = 1
-            , superShardingKeyColumns = DPIShardingKeyColumn nullPtr
+            , superShardingKeyColumns = nullPtr
             , numSuperShardingKeyColumns = 1
             , outNewSession = CInt 1
             }
