@@ -16,6 +16,7 @@ import Database.Oracle.Simple.Internal
     Connection,
     DPIModeExec (DPI_MODE_EXEC_DEFAULT),
     dpiExecute,
+    closeStatement,
     getRowCount,
     prepareStmt,
   )
@@ -29,14 +30,18 @@ execute conn sql param = do
   stmt <- prepareStmt conn sql
   _ <- evalStateT (runRowWriter (toRow param) stmt) (Column 0)
   _ <- dpiExecute stmt DPI_MODE_EXEC_DEFAULT
-  getRowCount stmt
+  rowCount <- getRowCount stmt
+  closeStatement stmt
+  pure rowCount
 
 -- | A version of 'execute' that does not perform query substitution.
 execute_ :: Connection -> String -> IO Word64
 execute_ conn sql = do
   stmt <- prepareStmt conn sql
   _ <- dpiExecute stmt DPI_MODE_EXEC_DEFAULT
-  getRowCount stmt
+  rowCount <- getRowCount stmt
+  closeStatement stmt
+  pure rowCount
 
 {- | Execute a multi-row INSERT, UPDATE or other SQL query that is not expected to return results.
 Returns the number of rows affected. If the list of parameters is empty, the function will simply
@@ -52,4 +57,5 @@ executeMany conn sql params = do
       _ <- evalStateT (runRowWriter (toRow param) stmt) (Column 0)
       _ <- dpiExecute stmt DPI_MODE_EXEC_DEFAULT
       rowsAffected <- getRowCount stmt
+      closeStatement stmt
       pure (totalRowsAffected + rowsAffected)

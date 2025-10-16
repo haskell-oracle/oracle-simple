@@ -49,6 +49,7 @@ module Database.Oracle.Simple.Internal
     ping,
     fetch,
     close,
+    closeStatement,
     connect,
     withConnection,
     withConnCreateParams,
@@ -1908,6 +1909,18 @@ foreign import ccall unsafe "dpiConn_getIsHealthy"
     Ptr CInt ->
     IO CInt
 
+foreign import ccall "dpiStmt_close"
+  dpiStmt_close ::
+    DPIStmt ->
+    CString ->
+    CUInt ->
+    IO CInt
+
+-- | Close the statement and make it unusable for further work immediately.
+closeStatement :: DPIStmt -> IO ()
+closeStatement stmt =
+  throwOracleError =<< dpiStmt_close stmt nullPtr 0
+
 -- | A pointer to an integer defining whether the connection is healthy (1) or not (0), which will be populated upon successful completion of this function.
 isHealthy :: Connection -> IO Bool
 isHealthy (Connection fptr) =
@@ -1922,5 +1935,3 @@ Structurally equivalent to 'Data.Functor.Identity.Identity'.
 newtype Only a = Only {fromOnly :: a}
   deriving stock (Eq, Ord, Read, Show, Generic)
   deriving newtype (Enum)
-
-
