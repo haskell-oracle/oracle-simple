@@ -30,7 +30,7 @@ query conn sql param = do
   found <- fetch stmt
   loop stmt found
   where
-    loop _ n | n < 1 = do
+    loop stmt n | n < 1 = do
       closeStatement stmt
       pure []
     loop stmt _ = do
@@ -46,7 +46,7 @@ query_ conn sql = do
   found <- fetch stmt
   loop stmt found
   where
-    loop _ n | n < 1 = do
+    loop stmt n | n < 1 = do
       closeStatement stmt
       pure []
     loop stmt _ = do
@@ -62,7 +62,7 @@ forEach_ conn sql cont = do
   found <- fetch stmt
   loop stmt found
   where
-    loop _ n | n < 1 = do
+    loop stmt n | n < 1 = do
       closeStatement stmt
       pure ()
     loop stmt _ = do
