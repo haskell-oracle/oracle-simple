@@ -4,15 +4,17 @@ on:
     branches:
       - master
   pull_request:
-
+    
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-     - uses: actions/checkout@v3.5.3
-     - uses: cachix/install-nix-action@v22
+     - uses: actions/checkout@v5
+     - uses: cachix/install-nix-action@v31
        with:
          nix_path: nixpkgs=channel:nixos-unstable
+     - name: nixpkgs update
+       run: nix-channel --update
      - name: run oracle
        run: nix-shell -p docker-compose --run "docker-compose up -d"
      - name: build
