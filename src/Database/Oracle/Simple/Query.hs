@@ -13,6 +13,7 @@ import Database.Oracle.Simple.Internal
     Connection,
     DPIModeExec (DPI_MODE_EXEC_DEFAULT),
     dpiExecute,
+    closeStatement,
     fetch,
     prepareStmt,
   )
@@ -29,7 +30,9 @@ query conn sql param = do
   found <- fetch stmt
   loop stmt found
   where
-    loop _ n | n < 1 = pure []
+    loop _ n | n < 1 = do
+      closeStatement stmt
+      pure []
     loop stmt _ = do
       tsVal <- getRow stmt
       found <- fetch stmt
@@ -43,7 +46,9 @@ query_ conn sql = do
   found <- fetch stmt
   loop stmt found
   where
-    loop _ n | n < 1 = pure []
+    loop _ n | n < 1 = do
+      closeStatement stmt
+      pure []
     loop stmt _ = do
       tsVal <- getRow stmt
       found <- fetch stmt
@@ -57,7 +62,9 @@ forEach_ conn sql cont = do
   found <- fetch stmt
   loop stmt found
   where
-    loop _ n | n < 1 = pure ()
+    loop _ n | n < 1 = do
+      closeStatement stmt
+      pure ()
     loop stmt _ = do
       tsVal <- getRow stmt
       cont tsVal
